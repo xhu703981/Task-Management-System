@@ -128,7 +128,7 @@ export function createSeed(): Db {
   return {
     meId: 'u-keya',
     workspaces: [
-      { id: 'ws-1', name: 'keyawang', slug: 'keyawang', color: '#5e6ad2', defaultTeamId: 'eng' },
+      { id: 'ws-1', name: 'TaskManagement', slug: 'taskmanagement', color: '#5e6ad2', defaultTeamId: 'eng' },
       { id: 'ws-2', name: 'Side Project', slug: 'side-project', color: '#4cb782', defaultTeamId: 'eng' },
     ],
     currentWorkspaceId: 'ws-1',

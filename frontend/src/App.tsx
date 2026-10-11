@@ -1,12 +1,15 @@
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { StoreProvider, UiProvider, useStore, useUi } from './data/store'
 import { WorkspaceShell } from './layouts/WorkspaceShell'
 import { SettingsShell } from './layouts/SettingsShell'
+import { AuthGate } from './components/AuthGate'
+import { clearToken } from './data/api'
 import { IssueContextMenu } from './components/IssueContextMenu'
 import { CommandPalette, ConfirmDelete, GlobalHotkeys, NewIssueModal, Toasts } from './components/Overlays'
 import TeamIssues, { MyIssues } from './pages/IssueList'
 import IssueDetail from './pages/IssueDetail'
+import Login from './pages/Login'
 import Cycles, { CycleDetail } from './pages/Cycles'
 import TeamSummary, { AllSummaries } from './pages/Summary'
 import { Inbox, Projects } from './pages/Misc'
@@ -21,39 +24,32 @@ function Home() {
   return <Navigate to={`/team/${team(ws.defaultTeamId).key}/issues`} replace />
 }
 
-function LoggedOut({ onLogin }: { onLogin: () => void }) {
-  return (
-    <div className="empty-state" style={{ height: '100%' }}>
-      <h1 className="title-lg" style={{ color: 'var(--text-primary)' }}>You’ve been logged out</h1>
-      <button className="btn primary" autoFocus onClick={onLogin}>Log back in</button>
-    </div>
-  )
-}
-
 function AppRoutes() {
-  const [loggedOut, setLoggedOut] = useState(false)
   const ui = useUi()
   const navigate = useNavigate()
   const logout = useCallback(() => {
     ui.setContextMenu(null)
     ui.setPaletteOpen(false)
     ui.setNewIssueTeamId(null)
-    setLoggedOut(true)
-  }, [ui])
-
-  if (loggedOut)
-    return (
-      <LoggedOut
-        onLogin={() => {
-          setLoggedOut(false)
-          navigate('/')
-        }}
-      />
-    )
+    clearToken()
+    navigate('/login', { replace: true })
+  }, [ui, navigate])
 
   return (
-    <>
-      <Routes>
+    <Routes>
+      <Route path="login" element={<Login />} />
+      <Route
+        element={
+          <AuthGate>
+            <IssueContextMenu />
+            <NewIssueModal />
+            <CommandPalette />
+            <ConfirmDelete />
+            <Toasts />
+            <GlobalHotkeys onLogout={logout} />
+          </AuthGate>
+        }
+      >
         <Route element={<WorkspaceShell onLogout={logout} />}>
           <Route index element={<Home />} />
           <Route path="inbox" element={<Inbox />} />
@@ -82,15 +78,9 @@ function AppRoutes() {
           <Route path="api" element={<ApiSettings />} />
           <Route path="new-team" element={<CreateTeam />} />
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-      <IssueContextMenu />
-      <NewIssueModal />
-      <CommandPalette />
-      <ConfirmDelete />
-      <Toasts />
-      <GlobalHotkeys onLogout={logout} />
-    </>
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   )
 }
 
