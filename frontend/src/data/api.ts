@@ -33,3 +33,24 @@ export async function getMe(): Promise<ApiUser> {
   if (!res.ok) throw new Error('Not logged in')
   return res.json()
 }
+
+/** The shape of IssueOut on the backend. */
+export interface ApiIssue {
+  id: number
+  title: string
+  description: string
+  status: string
+  priority: number
+  creator_id: number
+  assignee_id: number | null
+  created_at: string
+  updated_at: string
+}
+
+export async function getIssues(): Promise<ApiIssue[]> {
+  const res = await fetch('/api/issues', {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  })
+  if (!res.ok) throw new Error(`Could not load issues (${res.status})`)
+  return res.json()
+}
