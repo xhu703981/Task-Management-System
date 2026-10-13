@@ -21,6 +21,7 @@ import { IntegrationDetail, Integrations } from './pages/settings/Integrations'
 function Home() {
   const { db, team } = useStore()
   const ws = db.workspaces.find((w) => w.id === db.currentWorkspaceId)!
+  if (!ws.defaultTeamId) return <Navigate to="/my-issues" replace /> // you're in no team yet
   return <Navigate to={`/team/${team(ws.defaultTeamId).key}/issues`} replace />
 }
 

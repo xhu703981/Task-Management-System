@@ -264,7 +264,7 @@ function Palette({ onClose }: { onClose: () => void }) {
   const commands = useMemo<Command[]>(() => {
     const go = (path: string) => () => navigate(path)
     const base: Command[] = [
-      { group: 'Actions', label: 'Create new issue', icon: <Plus size={16} />, hint: 'C', run: () => setNewIssueTeamId(db.teams[0].id) },
+      { group: 'Actions', label: 'Create new issue', icon: <Plus size={16} />, hint: 'C', run: () => setNewIssueTeamId(db.teams[0]?.id ?? null) },
       { group: 'Actions', label: 'Toggle sidebar', icon: <PanelLeft size={16} />, hint: '[', run: () => setSidebarCollapsed((v) => !v) },
       { group: 'Navigation', label: 'Go to Inbox', icon: <Inbox size={16} />, run: go('/inbox') },
       { group: 'Navigation', label: 'Go to My issues', icon: <CircleDot size={16} />, run: go('/my-issues') },
@@ -365,7 +365,7 @@ export function GlobalHotkeys({ onLogout }: { onLogout: () => void }) {
       } else if (e.key === 'c' || e.key === 'C') {
         e.preventDefault()
         const key = location.pathname.match(/^\/team\/([^/]+)/)?.[1]
-        ui.setNewIssueTeamId((key && teamByKey(key)?.id) || db.teams[0].id)
+        ui.setNewIssueTeamId((key && teamByKey(key)?.id) || (db.teams[0]?.id ?? null))
       } else if (e.key === 'g') {
         pendingG = Date.now()
       } else if (e.key === 's' && Date.now() - pendingG < 1000) {

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createSeed } from './mock'
-import { statusMeta, priorityName, TEAM_COLORS } from './meta'
+import { statusMeta, priorityName, STATUSES, TEAM_COLORS } from './meta'
 import * as api from './api'
 import type { Db, Issue, Priority, Status, Team, Toast, User } from './types'
 
@@ -21,12 +21,27 @@ const toUser = (u: api.ApiUser): User => ({
   status: 'Active',
 })
 
-/** The backend has no teams, labels, cycles, etc. yet: those come from the local copy, or defaults. */
+/** Cycle settings and status names aren't on the backend yet: they come from the local copy, or defaults. */
+const toTeam = (d: Db, a: api.ApiTeam): Team => {
+  const local = d.teams.find((t) => t.id === String(a.id))
+  return {
+    cyclesEnabled: false,
+    cycleLengthWeeks: 2,
+    statuses: STATUSES.map((s) => ({ id: s.id, name: s.name })),
+    ...local,
+    id: String(a.id),
+    key: a.key,
+    name: a.name,
+    color: a.color,
+    memberIds: a.members.map((m) => String(m.user_id)),
+  }
+}
+
+/** Labels, cycles, etc. aren't on the backend yet: they come from the local copy, or defaults. */
 const toIssue = (d: Db, a: api.ApiIssue): Issue => {
   const local = d.issues.find((i) => i.id === String(a.id))
   const updatedAt = Date.parse(a.updated_at)
   return {
-    teamId: d.workspaces.find((w) => w.id === d.currentWorkspaceId)!.defaultTeamId,
     labelIds: [],
     cycleId: null,
     projectId: null,
@@ -36,7 +51,8 @@ const toIssue = (d: Db, a: api.ApiIssue): Issue => {
     subscribed: true,
     ...local,
     id: String(a.id),
-    number: a.id,
+    teamId: String(a.team_id),
+    number: a.number,
     title: a.title,
     description: a.description,
     status: a.status as Status,
@@ -100,11 +116,17 @@ function useStoreValue() {
     return null
   }
 
-  /** After login: swap the mock people and issues for the real ones. Every team gets every real user. */
-  const loadSession = (me: api.ApiUser, users: api.ApiUser[], issues: api.ApiIssue[]) =>
+  /** After login: swap the mock people, teams and issues for the real ones. */
+  const loadSession = (me: api.ApiUser, users: api.ApiUser[], teams: api.ApiTeam[], issues: api.ApiIssue[]) =>
     setDb((d) => {
-      const ids = users.map((u) => String(u.id))
-      const next: Db = { ...d, meId: String(me.id), users: users.map(toUser), teams: d.teams.map((t) => ({ ...t, memberIds: ids })), issues: [] }
+      const realTeams = teams.map((a) => toTeam(d, a))
+      // The workspace's default team (where "/" goes) must be a real one; '' when you're in no team.
+      const workspaces = d.workspaces.map((w) => ({ ...w, defaultTeamId: realTeams[0]?.id ?? '' }))
+      // Mock cycles and projects belong to the mock teams, which are gone now.
+      const isReal = (teamId: string) => realTeams.some((t) => t.id === teamId)
+      const cycles = d.cycles.filter((c) => isReal(c.teamId))
+      const projects = d.projects.filter((p) => isReal(p.teamId))
+      const next: Db = { ...d, meId: String(me.id), users: users.map(toUser), teams: realTeams, workspaces, cycles, projects, issues: [] }
       return { ...next, issues: issues.map((a) => toIssue(next, a)) }
     })
 
@@ -171,6 +193,7 @@ function useStoreValue() {
   const createIssue = (input: NewIssueInput) => {
     api
       .createIssue({
+        team_id: Number(input.teamId),
         title: input.title,
         description: input.description,
         status: input.status,
@@ -178,12 +201,12 @@ function useStoreValue() {
         assignee_id: input.assigneeId ? Number(input.assigneeId) : null,
       })
       .then((a) => {
-        // Team, labels and cycle aren't on the backend yet, so keep what was picked in this browser.
+        // Labels and cycle aren't on the backend yet, so keep what was picked in this browser.
         setDb((d) => {
-          const issue: Issue = { ...toIssue(d, a), teamId: input.teamId, labelIds: input.labelIds, cycleId: input.cycleId }
+          const issue: Issue = { ...toIssue(d, a), labelIds: input.labelIds, cycleId: input.cycleId }
           return logActivity({ ...d, issues: [issue, ...d.issues] }, issue.id, 'created the issue')
         })
-        toast(`${team(input.teamId).key}-${a.id} created`)
+        toast(`${team(input.teamId).key}-${a.number} created`)
       })
       .catch((err) => toast(err.message))
   }
@@ -194,24 +217,43 @@ function useStoreValue() {
       comments: [...d.comments, { id: newId('c'), issueId, authorId: d.meId, body, createdAt: Date.now() }],
     }))
 
-  const createTeam = (input: Pick<Team, 'name' | 'key' | 'color'>, copyFromId: string | null): Team => {
-    const d = dbRef.current
-    const source = copyFromId ? d.teams.find((t) => t.id === copyFromId) : undefined
-    const created: Team = {
-      id: newId('team'),
-      ...input,
-      memberIds: [d.meId],
-      cyclesEnabled: source?.cyclesEnabled ?? false,
-      cycleLengthWeeks: source?.cycleLengthWeeks ?? 2,
-      statuses: source ? source.statuses.map((s) => ({ ...s })) : d.teams[0].statuses.map((s) => ({ ...s })),
+  /** Resolves to the new team, or null if the backend refused (the reason is shown as a toast). */
+  const createTeam = async (input: Pick<Team, 'name' | 'key' | 'color'>, copyFromId: string | null): Promise<Team | null> => {
+    const source = copyFromId ? dbRef.current.teams.find((t) => t.id === copyFromId) : undefined
+    try {
+      const a = await api.createTeam(input)
+      // Cycle settings and status names are only kept in this browser, so copying them happens here.
+      const copied = source && { cyclesEnabled: source.cyclesEnabled, cycleLengthWeeks: source.cycleLengthWeeks, statuses: source.statuses.map((s) => ({ ...s })) }
+      const created: Team = { ...toTeam(dbRef.current, a), ...copied }
+      setDb((d) => ({ ...d, teams: [...d.teams, created] }))
+      toast(`Team "${created.name}" created`)
+      return created
+    } catch (err) {
+      toast((err as Error).message)
+      return null
     }
-    setDb((db) => ({ ...db, teams: [...db.teams, created] }))
-    toast(`Team "${created.name}" created`)
-    return created
   }
 
-  const updateTeam = (id: string, patch: Partial<Team>) =>
+  /** Change the screen right away; name, color and members are saved to the backend, the rest stays local.
+   *  If the backend refuses anything, reload the teams so the screen matches what was really saved. */
+  const updateTeam = (id: string, patch: Partial<Team>) => {
+    const before = dbRef.current.teams.find((t) => t.id === id)
+    if (!before) return
     setDb((d) => ({ ...d, teams: d.teams.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
+    const saves: Promise<unknown>[] = []
+    const fields: { name?: string; color?: string } = {}
+    if (patch.name !== undefined) fields.name = patch.name
+    if (patch.color !== undefined) fields.color = patch.color
+    if (Object.keys(fields).length) saves.push(api.updateTeam(Number(id), fields))
+    if (patch.memberIds) {
+      for (const m of patch.memberIds) if (!before.memberIds.includes(m)) saves.push(api.addTeamMember(Number(id), Number(m)))
+      for (const m of before.memberIds) if (!patch.memberIds.includes(m)) saves.push(api.removeTeamMember(Number(id), Number(m)))
+    }
+    Promise.all(saves).catch((err) => {
+      toast(err.message)
+      api.getTeams().then((teams) => setDb((d) => ({ ...d, teams: teams.map((a) => toTeam(d, a)) })))
+    })
+  }
 
   const updateUser = (id: string, patch: Partial<User>) =>
     setDb((d) => ({ ...d, users: d.users.map((u) => (u.id === id ? { ...u, ...patch } : u)) }))

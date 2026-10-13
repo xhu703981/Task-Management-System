@@ -7,7 +7,7 @@ import { TEAM_COLORS } from '../../data/meta'
 import { useStore } from '../../data/store'
 import type { Team } from '../../data/types'
 
-const KEY_RE = /^[A-Z0-9]{1,5}$/
+const KEY_RE = /^[A-Z]{1,5}$/
 
 function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   return (
@@ -29,13 +29,9 @@ export function TeamSettings() {
 
 function TeamSettingsForm({ team }: { team: Team }) {
   const { db, user, updateTeam, toast } = useStore()
-  const navigate = useNavigate()
   const [name, setName] = useState(team.name)
-  const [key, setKey] = useState(team.key)
   const [addId, setAddId] = useState('')
-  const keyTaken = db.teams.some((t) => t.id !== team.id && t.key === key)
-  const keyError = !KEY_RE.test(key) ? '1–5 letters or digits' : keyTaken ? 'Identifier already used by another team' : null
-  const dirty = name !== team.name || key !== team.key
+  const dirty = name !== team.name
   const nonMembers = db.users.filter((u) => u.status === 'Active' && !team.memberIds.includes(u.id))
 
   return (
@@ -52,10 +48,9 @@ function TeamSettingsForm({ team }: { team: Team }) {
         style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
         onSubmit={(e) => {
           e.preventDefault()
-          if (!name.trim() || keyError) return
-          updateTeam(team.id, { name: name.trim(), key })
+          if (!name.trim()) return
+          updateTeam(team.id, { name: name.trim() })
           toast('Team updated')
-          if (key !== team.key) navigate(`/settings/teams/${key}`, { replace: true })
         }}
       >
         <label className="field">
@@ -63,16 +58,15 @@ function TeamSettingsForm({ team }: { team: Team }) {
           <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <label className="field">
-          <span>Identifier — used in issue IDs ({key || '…'}-123)</span>
-          <input className="input mono" value={key} onChange={(e) => setKey(e.target.value.toUpperCase())} />
-          {keyError && <span className="danger-text label">{keyError}</span>}
+          <span>Identifier — used in issue IDs ({team.key}-123). Fixed once the team is created.</span>
+          <input className="input mono" value={team.key} readOnly />
         </label>
         <div className="field">
           <span>Icon color</span>
           <ColorPicker value={team.color} onChange={(c) => updateTeam(team.id, { color: c })} />
         </div>
         <div>
-          <button className="btn primary" type="submit" disabled={!dirty || !!keyError || !name.trim()}>Save</button>
+          <button className="btn primary" type="submit" disabled={!dirty || !name.trim()}>Save</button>
         </div>
       </form>
 
@@ -162,7 +156,7 @@ function TeamSettingsForm({ team }: { team: Team }) {
 const autoKey = (name: string) =>
   name
     .toUpperCase()
-    .replace(/[^A-Z0-9 ]/g, '')
+    .replace(/[^A-Z ]/g, '')
     .split(/\s+/)
     .filter(Boolean)
     .map((w, _, all) => (all.length > 1 ? w[0] : w.slice(0, 3)))
@@ -178,18 +172,18 @@ export function CreateTeam() {
   const [color, setColor] = useState(TEAM_COLORS[2])
   const [copyFrom, setCopyFrom] = useState('')
   const effectiveKey = keyEdited ? key : autoKey(name)
-  const keyError = !effectiveKey ? null : !KEY_RE.test(effectiveKey) ? '1–5 letters or digits' : db.teams.some((t) => t.key === effectiveKey) ? 'Identifier already in use' : null
+  const keyError = !effectiveKey ? null : !KEY_RE.test(effectiveKey) ? '1–5 capital letters' : db.teams.some((t) => t.key === effectiveKey) ? 'Identifier already in use' : null
 
   return (
     <div className="settings-page">
       <PageHeader title="Create a team" desc="Teams own their own issues, cycles and workflow." />
       <form
         style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault()
           if (!name.trim() || !effectiveKey || keyError) return
-          const t = createTeam({ name: name.trim(), key: effectiveKey, color }, copyFrom || null)
-          navigate(`/team/${t.key}/issues`)
+          const t = await createTeam({ name: name.trim(), key: effectiveKey, color }, copyFrom || null)
+          if (t) navigate(`/team/${t.key}/issues`)
         }}
       >
         <div className="row" style={{ gap: 12 }}>

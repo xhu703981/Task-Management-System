@@ -115,7 +115,7 @@ export function WorkspaceShell({ onLogout }: { onLogout: () => void }) {
           <button className="icon-btn" aria-label="Search" title="Search (Ctrl K)" onClick={() => ui.setPaletteOpen(true)}>
             <Search size={16} />
           </button>
-          <button className="icon-btn" aria-label="New issue" title="New issue (C)" onClick={() => ui.setNewIssueTeamId(myTeams[0]?.id ?? db.teams[0].id)}>
+          <button className="icon-btn" aria-label="New issue" title="New issue (C)" onClick={() => ui.setNewIssueTeamId(myTeams[0]?.id ?? db.teams[0]?.id ?? null)}>
             <SquarePen size={16} />
           </button>
         </div>

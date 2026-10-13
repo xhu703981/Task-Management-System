@@ -37,6 +37,8 @@ export async function getMe(): Promise<ApiUser> {
 /** The shape of IssueOut on the backend. */
 export interface ApiIssue {
   id: number
+  team_id: number
+  number: number
   title: string
   description: string
   status: string
@@ -82,7 +84,22 @@ export interface ApiIssueFields {
   assignee_id?: number | null
 }
 
+/** The shape of TeamOut on the backend. */
+export interface ApiTeam {
+  id: number
+  name: string
+  key: string
+  color: string
+  created_at: string
+  members: { user_id: number; role: 'owner' | 'member' }[]
+}
+
 export const getUsers = (): Promise<ApiUser[]> => send('/users', 'GET')
-export const createIssue = (fields: ApiIssueFields & { title: string }): Promise<ApiIssue> => send('/issues', 'POST', fields)
+export const getTeams = (): Promise<ApiTeam[]> => send('/teams', 'GET')
+export const createTeam = (fields: { name: string; key: string; color: string }): Promise<ApiTeam> => send('/teams', 'POST', fields)
+export const updateTeam = (id: number, fields: { name?: string; color?: string }): Promise<ApiTeam> => send(`/teams/${id}`, 'PATCH', fields)
+export const addTeamMember = (id: number, userId: number): Promise<ApiTeam> => send(`/teams/${id}/members`, 'POST', { user_id: userId })
+export const removeTeamMember = (id: number, userId: number): Promise<null> => send(`/teams/${id}/members/${userId}`, 'DELETE')
+export const createIssue = (fields: ApiIssueFields & { team_id: number; title: string }): Promise<ApiIssue> => send('/issues', 'POST', fields)
 export const updateIssue = (id: number, fields: ApiIssueFields): Promise<ApiIssue> => send(`/issues/${id}`, 'PATCH', fields)
 export const deleteIssue = (id: number): Promise<null> => send(`/issues/${id}`, 'DELETE')

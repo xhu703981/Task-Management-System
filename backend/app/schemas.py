@@ -32,6 +32,7 @@ IssueStatus = Literal["backlog", "todo", "in_progress", "in_review", "done", "ca
 
 
 class IssueCreate(BaseModel):
+    team_id: int
     title: str = Field(min_length=1, max_length=255)
     description: str = ""
     status: IssueStatus = "backlog"
@@ -43,6 +44,8 @@ class IssueOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    team_id: int
+    number: int
     title: str
     description: str
     status: str
@@ -59,3 +62,47 @@ class IssueUpdate(BaseModel):
     status: IssueStatus = None
     priority: int = Field(default=None, ge=0, le=4)
     assignee_id: int | None = None
+
+
+TeamRole = Literal["owner", "member"]
+TEAM_KEY = r"^[A-Z]{1,5}$"
+HEX_COLOR = r"^#[0-9a-fA-F]{6}$"
+
+
+class TeamMemberOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: int
+    role: str
+
+
+class TeamOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    key: str
+    color: str
+    created_at: datetime
+    members: list[TeamMemberOut]
+
+
+class TeamCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    key: str = Field(pattern=TEAM_KEY)
+    color: str = Field(pattern=HEX_COLOR)
+
+
+class TeamUpdate(BaseModel):
+    # No key: it's fixed after creation.
+    name: str = Field(default=None, min_length=1, max_length=255)
+    color: str = Field(default=None, pattern=HEX_COLOR)
+
+
+class TeamMemberAdd(BaseModel):
+    user_id: int
+    role: TeamRole = "member"
+
+
+class TeamMemberUpdate(BaseModel):
+    role: TeamRole
