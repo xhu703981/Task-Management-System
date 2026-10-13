@@ -7,7 +7,7 @@ import { Avatar, PriorityIcon, StatusIcon, TeamAvatar } from '../components/ui'
 import { SummaryPanel } from './Summary'
 import { PRIORITIES, STATUSES, statusMeta } from '../data/meta'
 import { useStore, useUi } from '../data/store'
-import { getIssues, type ApiIssue } from '../data/api'
+import { getIssues } from '../data/api'
 import type { Issue, Priority, Status } from '../data/types'
 
 type GroupBy = 'status' | 'priority' | 'assignee' | 'none'
@@ -376,39 +376,20 @@ export default function TeamIssues() {
 }
 
 export function MyIssues() {
-  const [issues, setIssues] = useState<ApiIssue[]>([])
+  const { db, loadIssues, toast } = useStore()
   //This is the box. issues is what's in the box right now; setIssues is how we put something new in.
 // - <ApiIssue[]> tells TypeScript: "this box holds a list of backend issues."
 // - ([]) means it starts empty, because at time 0ms we don't have an answer yet.
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
 
   useEffect(() => {
     getIssues()
-      .then((data) => setIssues(data))
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false))
+      .then((data) => loadIssues(data))
+      .catch((err) => toast(err.message))
   }, [])
   //This is "ask the backend once, after the first render."
 // - getIssues() sends GET /api/issues.
 // - .then((data) => ...) says what to do when the answer arrives: put it in the box with setIssues(data). That makes React call MyIssues() again.
 // - [] at the end means "only once." Without it, we'd get the infinite loop from before.
 
-  return (
-    <>
-      <div className="content-header">
-        <div className="breadcrumb">My issues</div>
-      </div>
-      <div style={{ padding: '8px 24px' }}>
-        {loading && <div>Loading…</div>}
-        {error && <div className="danger-text">{error}</div>}
-        {!loading && !error && issues.length === 0 && <div>No issues yet.</div>}
-        {issues.map((issue) => (
-          <div key={issue.id} style={{ padding: '6px 0' }}>
-            #{issue.id} {issue.title} · {issue.status} · priority {issue.priority}
-          </div>
-        ))}
-      </div>
-    </>
-  )
+  return <IssueListView title="My issues" issues={db.issues} emptyText="No issues yet." />
 }

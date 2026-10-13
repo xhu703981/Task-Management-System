@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { CalendarDays, FolderKanban, MoreHorizontal, Plus, Repeat, Star, Tag } from 'lucide-react'
 import { Menu, type MenuEntry } from '../components/Menu'
@@ -32,6 +32,9 @@ function IssueDetailView({ issue }: { issue: Issue }) {
   const t = team(issue.teamId)
   const [title, setTitle] = useState(issue.title)
   const [description, setDescription] = useState(issue.description)
+  // If the saved issue changes (e.g. the backend refused an edit and it was undone), show the saved text again.
+  useEffect(() => setTitle(issue.title), [issue.title])
+  useEffect(() => setDescription(issue.description), [issue.description])
   const [comment, setComment] = useState('')
   const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[]; searchable?: boolean } | null>(null)
 

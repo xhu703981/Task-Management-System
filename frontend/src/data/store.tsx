@@ -1,12 +1,52 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createSeed } from './mock'
-import { statusMeta, priorityName } from './meta'
-import type { Db, Issue, Team, Toast, User } from './types'
+import { statusMeta, priorityName, TEAM_COLORS } from './meta'
+import * as api from './api'
+import type { Db, Issue, Priority, Status, Team, Toast, User } from './types'
 
 let idCounter = 1000
 export const newId = (prefix: string) => `${prefix}-${++idCounter}`
 
 type IssuePatch = Partial<Omit<Issue, 'id' | 'teamId' | 'number'>>
+
+/* ---------- Backend → app shapes. Backend ids are numbers; app ids are strings. ---------- */
+
+const toUser = (u: api.ApiUser): User => ({
+  id: String(u.id),
+  name: u.name,
+  username: u.username,
+  email: u.email,
+  role: u.role,
+  color: TEAM_COLORS[u.id % TEAM_COLORS.length],
+  status: 'Active',
+})
+
+/** The backend has no teams, labels, cycles, etc. yet: those come from the local copy, or defaults. */
+const toIssue = (d: Db, a: api.ApiIssue): Issue => {
+  const local = d.issues.find((i) => i.id === String(a.id))
+  const updatedAt = Date.parse(a.updated_at)
+  return {
+    teamId: d.workspaces.find((w) => w.id === d.currentWorkspaceId)!.defaultTeamId,
+    labelIds: [],
+    cycleId: null,
+    projectId: null,
+    parentId: null,
+    dueDate: null,
+    favorite: false,
+    subscribed: true,
+    ...local,
+    id: String(a.id),
+    number: a.id,
+    title: a.title,
+    description: a.description,
+    status: a.status as Status,
+    priority: a.priority as Priority,
+    assigneeId: a.assignee_id === null ? null : String(a.assignee_id),
+    createdAt: Date.parse(a.created_at),
+    updatedAt,
+    completedAt: a.status === 'done' ? local?.completedAt ?? updatedAt : null,
+  }
+}
 
 export interface NewIssueInput {
   teamId: string
@@ -60,7 +100,42 @@ function useStoreValue() {
     return null
   }
 
-  const updateIssue = (id: string, patch: IssuePatch) =>
+  /** After login: swap the mock people and issues for the real ones. Every team gets every real user. */
+  const loadSession = (me: api.ApiUser, users: api.ApiUser[], issues: api.ApiIssue[]) =>
+    setDb((d) => {
+      const ids = users.map((u) => String(u.id))
+      const next: Db = { ...d, meId: String(me.id), users: users.map(toUser), teams: d.teams.map((t) => ({ ...t, memberIds: ids })), issues: [] }
+      return { ...next, issues: issues.map((a) => toIssue(next, a)) }
+    })
+
+  const loadIssues = (issues: api.ApiIssue[]) => setDb((d) => ({ ...d, issues: issues.map((a) => toIssue(d, a)) }))
+
+  /** Replace one issue with the backend's copy of it. */
+  const putIssue = (a: api.ApiIssue) =>
+    setDb((d) => ({ ...d, issues: d.issues.map((i) => (i.id === String(a.id) ? toIssue(d, a) : i)) }))
+
+  /** Change the screen right away, then save to the backend; if the backend says no, undo and show why. */
+  const updateIssue = (id: string, patch: IssuePatch) => {
+    const before = dbRef.current.issues.find((i) => i.id === id)
+    setLocalIssue(id, patch)
+    // Only these fields exist on the backend; labels, cycle, favorite, etc. stay in this browser.
+    const fields: api.ApiIssueFields = {}
+    if (patch.title !== undefined) fields.title = patch.title
+    if (patch.description !== undefined) fields.description = patch.description
+    if (patch.status !== undefined) fields.status = patch.status
+    if (patch.priority !== undefined) fields.priority = patch.priority
+    if ('assigneeId' in patch) fields.assignee_id = patch.assigneeId ? Number(patch.assigneeId) : null
+    if (!before || Object.keys(fields).length === 0) return
+    api
+      .updateIssue(Number(id), fields)
+      .then(putIssue)
+      .catch((err) => {
+        setDb((d) => ({ ...d, issues: d.issues.map((i) => (i.id === id ? before : i)) }))
+        toast(err.message)
+      })
+  }
+
+  const setLocalIssue = (id: string, patch: IssuePatch) =>
     setDb((d) => {
       const t = Date.now()
       let next: Db = {
@@ -82,40 +157,35 @@ function useStoreValue() {
     })
 
   const deleteIssue = (id: string) => {
-    const d = dbRef.current
-    const issue = d.issues.find((i) => i.id === id)
+    const issue = dbRef.current.issues.find((i) => i.id === id)
     if (!issue) return
-    const index = d.issues.indexOf(issue)
-    setDb((db) => ({ ...db, issues: db.issues.filter((i) => i.id !== id) }))
-    toast(`${issueKey(issue)} deleted`, () =>
-      setDb((db) => {
-        const issues = [...db.issues]
-        issues.splice(index, 0, issue)
-        return { ...db, issues }
-      }),
-    )
+    api
+      .deleteIssue(Number(id))
+      .then(() => {
+        setDb((db) => ({ ...db, issues: db.issues.filter((i) => i.id !== id) }))
+        toast(`${issueKey(issue)} deleted`)
+      })
+      .catch((err) => toast(err.message))
   }
 
-  const createIssue = (input: NewIssueInput): Issue => {
-    const d = dbRef.current
-    const number = Math.max(0, ...d.issues.filter((i) => i.teamId === input.teamId).map((i) => i.number)) + 1
-    const t = Date.now()
-    const issue: Issue = {
-      ...input,
-      id: `${input.teamId}-${number}`,
-      number,
-      projectId: null,
-      parentId: null,
-      dueDate: null,
-      createdAt: t,
-      updatedAt: t,
-      completedAt: input.status === 'done' ? t : null,
-      favorite: false,
-      subscribed: true,
-    }
-    setDb((db) => logActivity({ ...db, issues: [issue, ...db.issues] }, issue.id, 'created the issue'))
-    toast(`${team(issue.teamId).key}-${number} created`)
-    return issue
+  const createIssue = (input: NewIssueInput) => {
+    api
+      .createIssue({
+        title: input.title,
+        description: input.description,
+        status: input.status,
+        priority: input.priority,
+        assignee_id: input.assigneeId ? Number(input.assigneeId) : null,
+      })
+      .then((a) => {
+        // Team, labels and cycle aren't on the backend yet, so keep what was picked in this browser.
+        setDb((d) => {
+          const issue: Issue = { ...toIssue(d, a), teamId: input.teamId, labelIds: input.labelIds, cycleId: input.cycleId }
+          return logActivity({ ...d, issues: [issue, ...d.issues] }, issue.id, 'created the issue')
+        })
+        toast(`${team(input.teamId).key}-${a.id} created`)
+      })
+      .catch((err) => toast(err.message))
   }
 
   const addComment = (issueId: string, body: string) =>
@@ -187,6 +257,8 @@ function useStoreValue() {
     toasts,
     toast,
     dismissToast,
+    loadSession,
+    loadIssues,
     updateIssue,
     deleteIssue,
     createIssue,

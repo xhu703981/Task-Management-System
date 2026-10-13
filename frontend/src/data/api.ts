@@ -54,3 +54,35 @@ export async function getIssues(): Promise<ApiIssue[]> {
   if (!res.ok) throw new Error(`Could not load issues (${res.status})`)
   return res.json()
 }
+
+/** fetch with the token attached; on failure, throws the backend's error message. */
+async function send(path: string, method: string, body?: unknown) {
+  const res = await fetch(`/api${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    // FastAPI puts the message in "detail"; validation errors (422) make it a list instead.
+    throw new Error(typeof data?.detail === 'string' ? data.detail : `Request failed (${res.status})`)
+  }
+  return res.status === 204 ? null : res.json()
+}
+
+/** Fields the backend lets you set on an issue (IssueCreate / IssueUpdate). */
+export interface ApiIssueFields {
+  title?: string
+  description?: string
+  status?: string
+  priority?: number
+  assignee_id?: number | null
+}
+
+export const getUsers = (): Promise<ApiUser[]> => send('/users', 'GET')
+export const createIssue = (fields: ApiIssueFields & { title: string }): Promise<ApiIssue> => send('/issues', 'POST', fields)
+export const updateIssue = (id: number, fields: ApiIssueFields): Promise<ApiIssue> => send(`/issues/${id}`, 'PATCH', fields)
+export const deleteIssue = (id: number): Promise<null> => send(`/issues/${id}`, 'DELETE')

@@ -53,7 +53,7 @@ export function ConfirmDelete() {
       <div style={{ padding: '20px 20px 8px' }}>
         <h2 className="title-md">Delete {issueKey(issue)}?</h2>
         <p className="muted" style={{ margin: '8px 0 12px' }}>
-          “{issue.title}” will be deleted. You can undo this from the notification for a few seconds.
+          “{issue.title}” will be deleted. This can’t be undone.
         </p>
       </div>
       <div className="modal-footer">
