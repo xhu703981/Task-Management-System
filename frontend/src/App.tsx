@@ -7,7 +7,7 @@ import { AuthGate } from './components/AuthGate'
 import { clearToken } from './data/api'
 import { IssueContextMenu } from './components/IssueContextMenu'
 import { CommandPalette, ConfirmDelete, GlobalHotkeys, NewIssueModal, Toasts } from './components/Overlays'
-import TeamIssues, { MyIssues } from './pages/IssueList'
+import TeamIssues, { MyIssues, ProjectIssues } from './pages/IssueList'
 import IssueDetail from './pages/IssueDetail'
 import Login from './pages/Login'
 import Cycles, { CycleDetail } from './pages/Cycles'
@@ -61,6 +61,7 @@ function AppRoutes() {
           <Route path="team/:teamKey/cycles" element={<Cycles />} />
           <Route path="team/:teamKey/cycles/:cycleId" element={<CycleDetail />} />
           <Route path="team/:teamKey/projects" element={<Projects />} />
+          <Route path="project/:projectId" element={<ProjectIssues />} />
           <Route path="team/:teamKey/summary" element={<TeamSummary />} />
           <Route path="issue/:issueId" element={<IssueDetail />} />
         </Route>

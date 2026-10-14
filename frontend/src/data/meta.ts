@@ -1,4 +1,4 @@
-import type { Priority, Status } from './types'
+import type { Priority, ProjectStatus, Status } from './types'
 
 export const STATUSES: { id: Status; name: string; color: string }[] = [
   { id: 'backlog', name: 'Backlog', color: 'var(--status-backlog)' },
@@ -10,6 +10,13 @@ export const STATUSES: { id: Status; name: string; color: string }[] = [
 ]
 
 export const statusMeta = (id: Status) => STATUSES.find((s) => s.id === id)!
+
+export const PROJECT_STATUSES: { id: ProjectStatus; name: string; color: string }[] = [
+  { id: 'planned', name: 'Planned', color: 'var(--status-todo)' },
+  { id: 'in_progress', name: 'In Progress', color: 'var(--status-in-progress)' },
+  { id: 'completed', name: 'Completed', color: 'var(--status-done)' },
+  { id: 'canceled', name: 'Canceled', color: 'var(--status-canceled)' },
+]
 
 export const PRIORITIES: { id: Priority; name: string }[] = [
   { id: 1, name: 'Urgent' },

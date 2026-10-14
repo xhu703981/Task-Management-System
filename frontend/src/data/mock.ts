@@ -152,9 +152,9 @@ export function createSeed(): Db {
       { id: 'key-c4', teamId: 'key', number: 4, start: now + 5 * DAY, end: now + 12 * DAY },
     ],
     projects: [
-      { id: 'p-web', teamId: 'eng', name: 'Web app parity' },
-      { id: 'p-api', teamId: 'eng', name: 'Public API v2' },
-      { id: 'p-ops', teamId: 'key', name: 'Team operations' },
+      { id: 'p-web', teamId: 'eng', name: 'Web app parity', description: '', status: 'in_progress' },
+      { id: 'p-api', teamId: 'eng', name: 'Public API v2', description: '', status: 'planned' },
+      { id: 'p-ops', teamId: 'key', name: 'Team operations', description: '', status: 'in_progress' },
     ],
     issues,
     comments: [

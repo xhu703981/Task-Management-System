@@ -44,10 +44,14 @@ export interface Cycle {
   end: number
 }
 
+export type ProjectStatus = 'planned' | 'in_progress' | 'completed' | 'canceled'
+
 export interface Project {
   id: string
   teamId: string
   name: string
+  description: string
+  status: ProjectStatus
 }
 
 export interface Issue {

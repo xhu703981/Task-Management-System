@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState, type
 import { createSeed } from './mock'
 import { statusMeta, priorityName, STATUSES, TEAM_COLORS } from './meta'
 import * as api from './api'
-import type { Comment, Db, Issue, Priority, Status, Team, Toast, User } from './types'
+import type { Comment, Db, Issue, Priority, Project, Status, Team, Toast, User } from './types'
 
 let idCounter = 1000
 export const newId = (prefix: string) => `${prefix}-${++idCounter}`
@@ -38,13 +38,12 @@ const toTeam = (d: Db, a: api.ApiTeam): Team => {
   }
 }
 
-/** Cycles, projects, etc. aren't on the backend yet: they come from the local copy, or defaults. */
+/** Cycles, sub-issues, etc. aren't on the backend yet: they come from the local copy, or defaults. */
 const toIssue = (d: Db, a: api.ApiIssue): Issue => {
   const local = d.issues.find((i) => i.id === String(a.id))
   const updatedAt = Date.parse(a.updated_at)
   return {
     cycleId: null,
-    projectId: null,
     parentId: null,
     dueDate: null,
     favorite: false,
@@ -59,6 +58,7 @@ const toIssue = (d: Db, a: api.ApiIssue): Issue => {
     priority: a.priority as Priority,
     assigneeId: a.assignee_id === null ? null : String(a.assignee_id),
     labels: a.labels,
+    projectId: a.project_id === null ? null : String(a.project_id),
     createdAt: Date.parse(a.created_at),
     updatedAt,
     completedAt: a.status === 'done' ? local?.completedAt ?? updatedAt : null,
@@ -72,6 +72,14 @@ const toComment = (a: api.ApiComment): Comment => ({
   body: a.body,
   createdAt: Date.parse(a.created_at),
   edited: a.edited,
+})
+
+const toProject = (a: api.ApiProject): Project => ({
+  id: String(a.id),
+  teamId: String(a.team_id),
+  name: a.name,
+  description: a.description,
+  status: a.status,
 })
 
 export interface NewIssueInput {
@@ -126,18 +134,19 @@ function useStoreValue() {
     return null
   }
 
-  /** After login: swap the mock people, teams and issues for the real ones. */
-  const loadSession = (me: api.ApiUser, users: api.ApiUser[], teams: api.ApiTeam[], issues: api.ApiIssue[]) =>
+  /** After login: swap the mock people, teams, projects and issues for the real ones. */
+  const loadSession = (me: api.ApiUser, users: api.ApiUser[], teams: api.ApiTeam[], projects: api.ApiProject[], issues: api.ApiIssue[]) =>
     setDb((d) => {
       const realTeams = teams.map((a) => toTeam(d, a))
       // The workspace's default team (where "/" goes) must be a real one; '' when you're in no team.
       const workspaces = d.workspaces.map((w) => ({ ...w, defaultTeamId: realTeams[0]?.id ?? '' }))
-      // Mock cycles and projects belong to the mock teams, which are gone now.
-      const isReal = (teamId: string) => realTeams.some((t) => t.id === teamId)
-      const cycles = d.cycles.filter((c) => isReal(c.teamId))
-      const projects = d.projects.filter((p) => isReal(p.teamId))
+      // Mock cycles belong to the mock teams, which are gone now.
+      const cycles = d.cycles.filter((c) => realTeams.some((t) => t.id === c.teamId))
       // Comments are fetched per issue when its page opens (loadComments), so start with none.
-      const next: Db = { ...d, meId: String(me.id), users: users.map(toUser), teams: realTeams, workspaces, cycles, projects, issues: [], comments: [] }
+      const next: Db = {
+        ...d, meId: String(me.id), users: users.map(toUser), teams: realTeams, workspaces, cycles,
+        projects: projects.map(toProject), issues: [], comments: [],
+      }
       return { ...next, issues: issues.map((a) => toIssue(next, a)) }
     })
 
@@ -151,7 +160,7 @@ function useStoreValue() {
   const updateIssue = (id: string, patch: IssuePatch) => {
     const before = dbRef.current.issues.find((i) => i.id === id)
     setLocalIssue(id, patch)
-    // Only these fields exist on the backend; cycle, project, favorite, etc. stay in this browser.
+    // Only these fields exist on the backend; cycle, due date, favorite, etc. stay in this browser.
     const fields: api.ApiIssueFields = {}
     if (patch.title !== undefined) fields.title = patch.title
     if (patch.description !== undefined) fields.description = patch.description
@@ -159,6 +168,7 @@ function useStoreValue() {
     if (patch.priority !== undefined) fields.priority = patch.priority
     if ('assigneeId' in patch) fields.assignee_id = patch.assigneeId ? Number(patch.assigneeId) : null
     if (patch.labels !== undefined) fields.labels = patch.labels
+    if ('projectId' in patch) fields.project_id = patch.projectId ? Number(patch.projectId) : null
     if (!before || Object.keys(fields).length === 0) return
     api
       .updateIssue(Number(id), fields)
@@ -266,6 +276,46 @@ function useStoreValue() {
       .then(() => {
         setDb((d) => ({ ...d, comments: d.comments.filter((c) => c.id !== id) }))
         toast('Comment deleted')
+      })
+      .catch((err) => toast(err.message))
+
+  /** Resolves to true once saved, so the form only closes on success (e.g. a taken name keeps it open). */
+  const createProject = (teamId: string, fields: Pick<Project, 'name' | 'description' | 'status'>): Promise<boolean> =>
+    api
+      .createProject({ team_id: Number(teamId), ...fields })
+      .then((a) => {
+        setDb((d) => ({ ...d, projects: [...d.projects, toProject(a)] }))
+        toast(`Project "${a.name}" created`)
+        return true
+      })
+      .catch((err) => {
+        toast(err.message)
+        return false
+      })
+
+  const updateProject = (id: string, fields: Partial<Pick<Project, 'name' | 'description' | 'status'>>): Promise<boolean> =>
+    api
+      .updateProject(Number(id), fields)
+      .then((a) => {
+        setDb((d) => ({ ...d, projects: d.projects.map((p) => (p.id === id ? toProject(a) : p)) }))
+        return true
+      })
+      .catch((err) => {
+        toast(err.message)
+        return false
+      })
+
+  /** The backend sets the project's issues to "no project" (ON DELETE SET NULL); mirror that here. */
+  const deleteProject = (id: string) =>
+    api
+      .deleteProject(Number(id))
+      .then(() => {
+        setDb((d) => ({
+          ...d,
+          projects: d.projects.filter((p) => p.id !== id),
+          issues: d.issues.map((i) => (i.projectId === id ? { ...i, projectId: null } : i)),
+        }))
+        toast('Project deleted')
       })
       .catch((err) => toast(err.message))
 
@@ -384,6 +434,9 @@ function useStoreValue() {
     addComment,
     editComment,
     deleteComment,
+    createProject,
+    updateProject,
+    deleteProject,
     createTeam,
     updateTeam,
     setTeamRole,

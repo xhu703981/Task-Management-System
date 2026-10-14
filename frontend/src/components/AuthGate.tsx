@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Navigate, Outlet } from 'react-router-dom'
-import { getIssues, getMe, getTeams, getUsers } from '../data/api'
+import { getIssues, getMe, getProjects, getTeams, getUsers } from '../data/api'
 import { useStore } from '../data/store'
 
 /** Wraps every page that needs a logged-in user. children = things that only exist while logged in. */
@@ -9,10 +9,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<'checking' | 'in' | 'out'>('checking')
 
   useEffect(() => {
-    // Check the token first (fails → /login), then load the real people, teams and issues before any page shows.
+    // Check the token first (fails → /login), then load the real people, teams, projects and issues before any page shows.
     getMe()
       .then((me) =>
-        Promise.all([getUsers(), getTeams(), getIssues()]).then(([users, teams, issues]) => loadSession(me, users, teams, issues)),
+        Promise.all([getUsers(), getTeams(), getProjects(), getIssues()]).then(([users, teams, projects, issues]) =>
+          loadSession(me, users, teams, projects, issues),
+        ),
       )
       .then(() => setStatus('in'))
       .catch(() => setStatus('out'))

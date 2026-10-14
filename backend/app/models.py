@@ -60,6 +60,21 @@ class TeamMember(Base):
     # - When a user is deleted, their memberships are deleted as well.
 
 
+class Project(Base):
+    __tablename__ = "projects"
+    __table_args__ = (
+        CheckConstraint("status IN ('planned', 'in_progress', 'completed', 'canceled')", name="status_valid"),
+        UniqueConstraint("team_id", "name", name="uq_projects_team_id_name"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, server_default="")
+    status: Mapped[str] = mapped_column(String(16), server_default="planned")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Issue(Base):
     __tablename__ = "issues"
     __table_args__ = (
@@ -82,6 +97,7 @@ class Issue(Base):
     creator_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     labels: Mapped[list[str]] = mapped_column(ARRAY(String(32)), server_default="{}")
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

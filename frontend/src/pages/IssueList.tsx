@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Filter, LayoutList, Columns3, Plus, SlidersHorizontal, Sparkles, X, Repeat } from 'lucide-react'
 import { Menu, type MenuEntry } from '../components/Menu'
 import { IssueRow } from '../components/IssueRow'
@@ -374,6 +374,29 @@ export default function TeamIssues() {
       }
       issues={db.issues.filter((i) => i.teamId === team.id)}
       emptyText={`${team.name} has no issues yet.`}
+    />
+  )
+}
+
+/** The issues in one project: the same list/board view, scoped to the project. */
+export function ProjectIssues() {
+  const { projectId } = useParams()
+  const { db, team } = useStore()
+  const project = db.projects.find((p) => p.id === projectId)
+  if (!project) return <div className="empty-state">This project doesn’t exist or was deleted.</div>
+  const t = team(project.teamId)
+  return (
+    <IssueListView
+      key={project.id}
+      teamId={t.id}
+      title={
+        <>
+          <TeamAvatar team={t} size={16} /> {t.name} <span className="sep">›</span>
+          <Link to={`/team/${t.key}/projects`} className="muted">Projects</Link> <span className="sep">›</span> {project.name}
+        </>
+      }
+      issues={db.issues.filter((i) => i.projectId === project.id)}
+      emptyText={`${project.name} has no issues yet. Add one from an issue’s Project field.`}
     />
   )
 }

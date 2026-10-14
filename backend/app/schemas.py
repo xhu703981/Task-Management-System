@@ -58,6 +58,7 @@ class IssueCreate(BaseModel):
     priority: int = Field(default=0, ge=0, le=4)
     assignee_id: int | None = None
     labels: Labels = []
+    project_id: int | None = None
 
 
 class IssueOut(BaseModel):
@@ -73,6 +74,7 @@ class IssueOut(BaseModel):
     creator_id: int
     assignee_id: int | None
     labels: list[str]
+    project_id: int | None
     created_at: datetime
     updated_at: datetime
 
@@ -84,6 +86,7 @@ class IssueUpdate(BaseModel):
     priority: int = Field(default=None, ge=0, le=4)
     assignee_id: int | None = None
     labels: Labels = None
+    project_id: int | None = None
 
 
 TeamRole = Literal["owner", "member"]
@@ -156,3 +159,33 @@ class CommentOut(BaseModel):
     @property
     def edited(self) -> bool:
         return self.updated_at > self.created_at
+
+
+ProjectStatus = Literal["planned", "in_progress", "completed", "canceled"]
+# Trimmed before the length check, so "Q4 launch " can't sneak past the unique-name rule as a different name.
+ProjectName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
+
+
+class ProjectCreate(BaseModel):
+    team_id: int
+    name: ProjectName
+    description: str = ""
+    status: ProjectStatus = "planned"
+
+
+class ProjectUpdate(BaseModel):
+    # No team_id: moving a project would leave its issues in a different team than the project.
+    name: ProjectName = None
+    description: str = None
+    status: ProjectStatus = None
+
+
+class ProjectOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    team_id: int
+    name: str
+    description: str
+    status: str
+    created_at: datetime

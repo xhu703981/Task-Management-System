@@ -46,6 +46,7 @@ export interface ApiIssue {
   creator_id: number
   assignee_id: number | null
   labels: string[]
+  project_id: number | null
   created_at: string
   updated_at: string
 }
@@ -87,6 +88,7 @@ export interface ApiIssueFields {
   priority?: number
   assignee_id?: number | null
   labels?: string[]
+  project_id?: number | null
 }
 
 /** The shape of TeamOut on the backend. */
@@ -110,6 +112,19 @@ export interface ApiComment {
   edited: boolean
 }
 
+/** The shape of ProjectOut on the backend. */
+export interface ApiProject {
+  id: number
+  team_id: number
+  name: string
+  description: string
+  status: 'planned' | 'in_progress' | 'completed' | 'canceled'
+  created_at: string
+}
+
+/** Fields of ProjectCreate / ProjectUpdate (team_id only on create). */
+export type ApiProjectFields = Partial<Pick<ApiProject, 'name' | 'description' | 'status'>>
+
 export const getUsers = (): Promise<ApiUser[]> => send('/users', 'GET')
 export const getTeams = (): Promise<ApiTeam[]> => send('/teams', 'GET')
 export const createTeam = (fields: { name: string; key: string; color: string }): Promise<ApiTeam> => send('/teams', 'POST', fields)
@@ -126,3 +141,7 @@ export const getComments = (issueId: number): Promise<ApiComment[]> => send(`/is
 export const createComment = (issueId: number, body: string): Promise<ApiComment> => send(`/issues/${issueId}/comments`, 'POST', { body })
 export const updateComment = (id: number, body: string): Promise<ApiComment> => send(`/comments/${id}`, 'PATCH', { body })
 export const deleteComment = (id: number): Promise<null> => send(`/comments/${id}`, 'DELETE')
+export const getProjects = (): Promise<ApiProject[]> => send('/projects', 'GET')
+export const createProject = (fields: ApiProjectFields & { team_id: number; name: string }): Promise<ApiProject> => send('/projects', 'POST', fields)
+export const updateProject = (id: number, fields: ApiProjectFields): Promise<ApiProject> => send(`/projects/${id}`, 'PATCH', fields)
+export const deleteProject = (id: number): Promise<null> => send(`/projects/${id}`, 'DELETE')

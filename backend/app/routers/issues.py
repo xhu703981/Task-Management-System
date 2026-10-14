@@ -3,7 +3,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Issue, Team, TeamMember, User
+from app.models import Issue, Project, Team, TeamMember, User
 from app.schemas import IssueCreate, IssueOut, IssueUpdate
 from app.security import get_current_user
 
@@ -19,6 +19,14 @@ def visible_to(user: User):
 def check_assignee(db: Session, team_id: int, assignee_id: int | None):
     if assignee_id is not None and db.get(TeamMember, (team_id, assignee_id)) is None:
         raise HTTPException(status_code=422, detail="Assignee is not a member of this team")
+
+
+def check_project(db: Session, team_id: int, project_id: int | None):
+    if project_id is None:
+        return
+    project = db.get(Project, project_id)
+    if project is None or project.team_id != team_id:
+        raise HTTPException(status_code=422, detail="Project is not in this issue's team")
 
 
 @router.get("", response_model=list[IssueOut])
@@ -45,6 +53,7 @@ def create_issue(
     if db.get(TeamMember, (payload.team_id, current_user.id)) is None:
         raise HTTPException(status_code=403, detail="You are not a member of this team")
     check_assignee(db, payload.team_id, payload.assignee_id)
+    check_project(db, payload.team_id, payload.project_id)
     # Bump the team's counter and read the new value in one statement. Postgres locks the team row
     # until we commit, so two people creating issues at once get different numbers.
     number = db.scalar(
@@ -75,6 +84,7 @@ def update_issue(
     changes = payload.model_dump(exclude_unset=True)
     #exclude_unset=True means "only include fields that are in model_fields_set.
     check_assignee(db, issue.team_id, changes.get("assignee_id"))
+    check_project(db, issue.team_id, changes.get("project_id"))
 
     for field, value in changes.items():
         setattr(issue, field, value)
