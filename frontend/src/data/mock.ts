@@ -141,8 +141,8 @@ export function createSeed(): Db {
       { id: 'u-sam', name: 'sam@example.com', username: 'sam', email: 'sam@example.com', color: '#6b6b73', role: 'Member', status: 'Invited' },
     ],
     teams: [
-      { id: 'eng', key: 'ENG', name: 'Team 2', color: '#5e6ad2', memberIds: ['u-keya', 'u-lucas', 'u-maya', 'u-diego', 'u-priya'], cyclesEnabled: true, cycleLengthWeeks: 2, statuses: STATUS_FLOW },
-      { id: 'key', key: 'KEY', name: 'Keya Wang - Team 1', color: '#f2994a', memberIds: ['u-keya', 'u-lucas'], cyclesEnabled: true, cycleLengthWeeks: 1, statuses: STATUS_FLOW },
+      { id: 'eng', key: 'ENG', name: 'Team 2', color: '#5e6ad2', memberIds: ['u-keya', 'u-lucas', 'u-maya', 'u-diego', 'u-priya'], ownerIds: ['u-keya'], cyclesEnabled: true, cycleLengthWeeks: 2, statuses: STATUS_FLOW },
+      { id: 'key', key: 'KEY', name: 'Keya Wang - Team 1', color: '#f2994a', memberIds: ['u-keya', 'u-lucas'], ownerIds: ['u-keya'], cyclesEnabled: true, cycleLengthWeeks: 1, statuses: STATUS_FLOW },
     ],
     cycles: [
       { id: 'eng-c11', teamId: 'eng', number: 11, start: daysAgo(17), end: daysAgo(3) },
@@ -165,9 +165,9 @@ export function createSeed(): Db {
     ],
     issues,
     comments: [
-      { id: 'c1', issueId: 'eng-1', authorId: 'u-lucas', body: 'I can reproduce this on Chrome and Edge. Looks like we never write the state to storage.', createdAt: daysAgo(3) },
-      { id: 'c2', issueId: 'eng-1', authorId: 'u-keya', body: 'Let\'s persist it per workspace. Lucas, can you take it this cycle?', createdAt: daysAgo(2) },
-      { id: 'c3', issueId: 'eng-1', authorId: 'u-lucas', body: 'Yes, PR coming tomorrow.', createdAt: daysAgo(1) },
+      { id: 'c1', issueId: 'eng-1', authorId: 'u-lucas', body: 'I can reproduce this on Chrome and Edge. Looks like we never write the state to storage.', createdAt: daysAgo(3), edited: false },
+      { id: 'c2', issueId: 'eng-1', authorId: 'u-keya', body: 'Let\'s persist it per workspace. Lucas, can you take it this cycle?', createdAt: daysAgo(2), edited: false },
+      { id: 'c3', issueId: 'eng-1', authorId: 'u-lucas', body: 'Yes, PR coming tomorrow.', createdAt: daysAgo(1), edited: false },
     ],
     activity: issues
       .filter((i) => i.updatedAt > daysAgo(7))

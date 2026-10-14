@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { CalendarDays, FolderKanban, MoreHorizontal, Plus, Repeat, Star, Tag } from 'lucide-react'
+import { CalendarDays, FolderKanban, MoreHorizontal, Pencil, Plus, Repeat, Star, Tag, Trash2 } from 'lucide-react'
 import { Menu, type MenuEntry } from '../components/Menu'
 import { AIBlock, summarizeIssue, useAiSummary } from '../components/AI'
 import { IssueLabels } from '../components/IssueRow'
@@ -8,7 +8,7 @@ import { Avatar, PriorityIcon, StatusIcon, TeamAvatar, timeAgo } from '../compon
 import { cycleOptions } from '../components/IssueContextMenu'
 import { PRIORITIES, STATUSES, priorityName, statusMeta } from '../data/meta'
 import { useStore, useUi } from '../data/store'
-import type { Issue } from '../data/types'
+import type { Comment, Issue } from '../data/types'
 
 export default function IssueDetail() {
   const { issueId } = useParams()
@@ -26,7 +26,7 @@ export default function IssueDetail() {
 
 function IssueDetailView({ issue }: { issue: Issue }) {
   const store = useStore()
-  const { db, user, team, issueKey, updateIssue, addComment } = store
+  const { db, me, user, team, issueKey, updateIssue, loadComments, addComment, editComment, deleteComment } = store
   const { setContextMenu, setNewIssueTeamId } = useUi()
   const navigate = useNavigate()
   const t = team(issue.teamId)
@@ -36,6 +36,12 @@ function IssueDetailView({ issue }: { issue: Issue }) {
   useEffect(() => setTitle(issue.title), [issue.title])
   useEffect(() => setDescription(issue.description), [issue.description])
   const [comment, setComment] = useState('')
+  const [posting, setPosting] = useState(false)
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
+  // This component is remounted per issue (key={issue.id}), so this runs once each time an issue is opened.
+  useEffect(() => {
+    loadComments(issue.id)
+  }, [issue.id])
   const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[]; searchable?: boolean } | null>(null)
 
   const comments = db.comments.filter((c) => c.issueId === issue.id)
@@ -53,6 +59,21 @@ function IssueDetailView({ issue }: { issue: Issue }) {
   const openAt = (e: React.MouseEvent, entries: MenuEntry[], searchable?: boolean) => {
     const r = e.currentTarget.getBoundingClientRect()
     setMenu({ x: r.left, y: r.bottom + 4, entries, searchable })
+  }
+
+  // Same rules as the backend: only the author edits; the author, a team owner or an Admin deletes.
+  const commentMenu = (c: Comment): MenuEntry[] => {
+    const entries: MenuEntry[] = []
+    if (c.authorId === me.id) entries.push({ label: 'Edit comment', icon: <Pencil size={16} />, onSelect: () => setEditing({ id: c.id, text: c.body }) })
+    if (c.authorId === me.id || t.ownerIds.includes(me.id) || me.role === 'Admin')
+      entries.push({ label: 'Delete comment', icon: <Trash2 size={16} />, danger: true, onSelect: () => deleteComment(c.id) })
+    return entries
+  }
+
+  const saveEdit = async () => {
+    if (!editing || !editing.text.trim()) return
+    const original = comments.find((c) => c.id === editing.id)
+    if (editing.text.trim() === original?.body || (await editComment(editing.id, editing.text.trim()))) setEditing(null)
   }
 
   const cycle = db.cycles.find((c) => c.id === issue.cycleId)
@@ -146,35 +167,72 @@ function IssueDetailView({ issue }: { issue: Issue }) {
                   <Avatar user={user(db.meId)} size={18} />
                   <span>Issue created · {timeAgo(issue.createdAt)}</span>
                 </div>
-                {timeline.map((x) =>
-                  x.kind === 'comment' ? (
+                {timeline.map((x) => {
+                  if (x.kind === 'comment') {
+                    const actions = commentMenu(x.c)
+                    const isEditing = editing?.id === x.c.id
+                    return (
                     <div key={x.c.id} className="activity-item">
                       <Avatar user={user(x.c.authorId)} size={20} />
                       <div className="comment">
                         <div className="row" style={{ marginBottom: 4 }}>
                           <span style={{ fontWeight: 500 }}>{user(x.c.authorId)?.name}</span>
-                          <span className="faint" style={{ fontSize: 12 }}>{timeAgo(x.c.createdAt)}</span>
+                          <span className="faint" style={{ fontSize: 12 }}>
+                            {timeAgo(x.c.createdAt)}
+                            {x.c.edited && ' (edited)'}
+                          </span>
+                          <span className="spacer" />
+                          {actions.length > 0 && !isEditing && (
+                            <button className="icon-btn" style={{ width: 22, height: 22 }} aria-label="Comment actions" onClick={(e) => openAt(e, actions)}>
+                              <MoreHorizontal size={14} />
+                            </button>
+                          )}
                         </div>
-                        <div style={{ whiteSpace: 'pre-wrap' }}>{x.c.body}</div>
+                        {isEditing ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <textarea
+                              className="plain-input"
+                              style={{ resize: 'vertical', minHeight: 48 }}
+                              autoFocus
+                              aria-label="Edit comment"
+                              value={editing.text}
+                              onChange={(e) => setEditing({ id: x.c.id, text: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) saveEdit()
+                                if (e.key === 'Escape') setEditing(null)
+                              }}
+                            />
+                            <div className="row" style={{ justifyContent: 'flex-end' }}>
+                              <button className="btn sm ghost" onClick={() => setEditing(null)}>Cancel</button>
+                              <button className="btn sm" disabled={!editing.text.trim()} onClick={saveEdit}>Save</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ whiteSpace: 'pre-wrap' }}>{x.c.body}</div>
+                        )}
                       </div>
                     </div>
-                  ) : (
+                    )
+                  }
+                  return (
                     <div key={x.a.id} className="activity-item faint">
                       <Avatar user={user(x.a.actorId)} size={18} />
                       <span>
                         <span className="muted">{user(x.a.actorId)?.name}</span> {x.a.text} · {timeAgo(x.a.createdAt)}
                       </span>
                     </div>
-                  ),
-                )}
+                  )
+                })}
                 <form
                   className="comment"
                   style={{ marginLeft: 30, display: 'flex', flexDirection: 'column', gap: 8 }}
-                  onSubmit={(e) => {
+                  onSubmit={async (e) => {
                     e.preventDefault()
-                    if (!comment.trim()) return
-                    addComment(issue.id, comment.trim())
-                    setComment('')
+                    if (!comment.trim() || posting) return
+                    setPosting(true)
+                    // Keep the text if saving fails, so nothing typed is lost.
+                    if (await addComment(issue.id, comment.trim())) setComment('')
+                    setPosting(false)
                   }}
                 >
                   <textarea
@@ -188,7 +246,7 @@ function IssueDetailView({ issue }: { issue: Issue }) {
                     }}
                   />
                   <div className="row" style={{ justifyContent: 'flex-end' }}>
-                    <button className="btn sm" type="submit" disabled={!comment.trim()}>Comment</button>
+                    <button className="btn sm" type="submit" disabled={!comment.trim() || posting}>Comment</button>
                   </div>
                 </form>
               </div>

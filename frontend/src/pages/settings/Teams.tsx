@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { X } from 'lucide-react'
-import { Avatar, SettingsRow, StatusIcon, TeamAvatar, Toggle } from '../../components/ui'
+import { Trash2, X } from 'lucide-react'
+import { Avatar, Modal, SettingsRow, StatusIcon, TeamAvatar, Toggle } from '../../components/ui'
 import { PageHeader } from './Personal'
 import { TEAM_COLORS } from '../../data/meta'
 import { useStore } from '../../data/store'
@@ -28,9 +28,11 @@ export function TeamSettings() {
 }
 
 function TeamSettingsForm({ team }: { team: Team }) {
-  const { db, user, updateTeam, toast } = useStore()
+  const { db, user, updateTeam, setTeamRole, deleteTeam, toast } = useStore()
+  const navigate = useNavigate()
   const [name, setName] = useState(team.name)
   const [addId, setAddId] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const dirty = name !== team.name
   const nonMembers = db.users.filter((u) => u.status === 'Active' && !team.memberIds.includes(u.id))
 
@@ -81,6 +83,16 @@ function TeamSettingsForm({ team }: { team: Team }) {
                 <Avatar user={u} size={24} />
                 <span style={{ flex: 1, fontWeight: 500 }}>{u.name}</span>
                 <span className="muted">{u.email}</span>
+                <select
+                  className="select"
+                  style={{ width: 110 }}
+                  aria-label={`Role of ${u.name}`}
+                  value={team.ownerIds.includes(id) ? 'owner' : 'member'}
+                  onChange={(e) => setTeamRole(team.id, id, e.target.value as 'owner' | 'member')}
+                >
+                  <option value="owner">Owner</option>
+                  <option value="member">Member</option>
+                </select>
                 <button
                   className="icon-btn"
                   aria-label={`Remove ${u.name}`}
@@ -149,6 +161,38 @@ function TeamSettingsForm({ team }: { team: Team }) {
           )}
         </div>
       </section>
+
+      <section className="settings-section">
+        <h3 className="danger-text">Danger zone</h3>
+        <div className="card danger-zone" style={{ padding: '0 16px' }}>
+          <SettingsRow title="Delete team" desc="Only possible once the team has no issues. Team owners and Admins only.">
+            <button className="btn sm danger-outline" onClick={() => setConfirmDelete(true)}>
+              <Trash2 size={14} /> Delete team
+            </button>
+          </SettingsRow>
+        </div>
+      </section>
+
+      {confirmDelete && (
+        <Modal onClose={() => setConfirmDelete(false)} width={420}>
+          <div style={{ padding: '20px 20px 8px' }}>
+            <h2 className="title-md">Delete {team.name}?</h2>
+            <p className="muted" style={{ margin: '8px 0 12px' }}>This can’t be undone.</p>
+          </div>
+          <div className="modal-footer">
+            <button className="btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
+            <button
+              className="btn danger"
+              onClick={async () => {
+                setConfirmDelete(false)
+                if (await deleteTeam(team.id)) navigate('/settings/teams', { replace: true })
+              }}
+            >
+              Delete team
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

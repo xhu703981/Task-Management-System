@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState, type
 import { createSeed } from './mock'
 import { statusMeta, priorityName, STATUSES, TEAM_COLORS } from './meta'
 import * as api from './api'
-import type { Db, Issue, Priority, Status, Team, Toast, User } from './types'
+import type { Comment, Db, Issue, Priority, Status, Team, Toast, User } from './types'
 
 let idCounter = 1000
 export const newId = (prefix: string) => `${prefix}-${++idCounter}`
@@ -34,6 +34,7 @@ const toTeam = (d: Db, a: api.ApiTeam): Team => {
     name: a.name,
     color: a.color,
     memberIds: a.members.map((m) => String(m.user_id)),
+    ownerIds: a.members.filter((m) => m.role === 'owner').map((m) => String(m.user_id)),
   }
 }
 
@@ -63,6 +64,15 @@ const toIssue = (d: Db, a: api.ApiIssue): Issue => {
     completedAt: a.status === 'done' ? local?.completedAt ?? updatedAt : null,
   }
 }
+
+const toComment = (a: api.ApiComment): Comment => ({
+  id: String(a.id),
+  issueId: String(a.issue_id),
+  authorId: String(a.author_id),
+  body: a.body,
+  createdAt: Date.parse(a.created_at),
+  edited: a.edited,
+})
 
 export interface NewIssueInput {
   teamId: string
@@ -126,7 +136,8 @@ function useStoreValue() {
       const isReal = (teamId: string) => realTeams.some((t) => t.id === teamId)
       const cycles = d.cycles.filter((c) => isReal(c.teamId))
       const projects = d.projects.filter((p) => isReal(p.teamId))
-      const next: Db = { ...d, meId: String(me.id), users: users.map(toUser), teams: realTeams, workspaces, cycles, projects, issues: [] }
+      // Comments are fetched per issue when its page opens (loadComments), so start with none.
+      const next: Db = { ...d, meId: String(me.id), users: users.map(toUser), teams: realTeams, workspaces, cycles, projects, issues: [], comments: [] }
       return { ...next, issues: issues.map((a) => toIssue(next, a)) }
     })
 
@@ -211,11 +222,50 @@ function useStoreValue() {
       .catch((err) => toast(err.message))
   }
 
-  const addComment = (issueId: string, body: string) =>
-    setDb((d) => ({
-      ...d,
-      comments: [...d.comments, { id: newId('c'), issueId, authorId: d.meId, body, createdAt: Date.now() }],
-    }))
+  /** Replace this issue's comments with the backend's list. */
+  const loadComments = (issueId: string) =>
+    api
+      .getComments(Number(issueId))
+      .then((list) => setDb((d) => ({ ...d, comments: [...d.comments.filter((c) => c.issueId !== issueId), ...list.map(toComment)] })))
+      .catch((err) => toast(err.message))
+
+  /** Resolves to true once saved, so the page only clears the comment box on success. */
+  const addComment = (issueId: string, body: string): Promise<boolean> =>
+    api
+      .createComment(Number(issueId), body)
+      .then((a) => {
+        setDb((d) => ({ ...d, comments: [...d.comments, toComment(a)] }))
+        return true
+      })
+      .catch((err) => {
+        toast(err.message)
+        return false
+      })
+
+  const putComment = (a: api.ApiComment) =>
+    setDb((d) => ({ ...d, comments: d.comments.map((c) => (c.id === String(a.id) ? toComment(a) : c)) }))
+
+  /** Resolves to true once saved, so the page only closes the editor on success. */
+  const editComment = (id: string, body: string): Promise<boolean> =>
+    api
+      .updateComment(Number(id), body)
+      .then((a) => {
+        putComment(a)
+        return true
+      })
+      .catch((err) => {
+        toast(err.message)
+        return false
+      })
+
+  const deleteComment = (id: string) =>
+    api
+      .deleteComment(Number(id))
+      .then(() => {
+        setDb((d) => ({ ...d, comments: d.comments.filter((c) => c.id !== id) }))
+        toast('Comment deleted')
+      })
+      .catch((err) => toast(err.message))
 
   /** Resolves to the new team, or null if the backend refused (the reason is shown as a toast). */
   const createTeam = async (input: Pick<Team, 'name' | 'key' | 'color'>, copyFromId: string | null): Promise<Team | null> => {
@@ -254,6 +304,30 @@ function useStoreValue() {
       api.getTeams().then((teams) => setDb((d) => ({ ...d, teams: teams.map((a) => toTeam(d, a)) })))
     })
   }
+
+  const setTeamRole = (teamId: string, userId: string, role: 'owner' | 'member') =>
+    api
+      .updateTeamMember(Number(teamId), Number(userId), role)
+      .then((a) => setDb((d) => ({ ...d, teams: d.teams.map((t) => (t.id === teamId ? toTeam(d, a) : t)) })))
+      .catch((err) => toast(err.message))
+
+  /** Resolves to true if the team was deleted (the backend refuses while it still has issues). */
+  const deleteTeam = (teamId: string): Promise<boolean> =>
+    api
+      .deleteTeam(Number(teamId))
+      .then(() => {
+        setDb((d) => {
+          const teams = d.teams.filter((t) => t.id !== teamId)
+          const workspaces = d.workspaces.map((w) => (w.defaultTeamId === teamId ? { ...w, defaultTeamId: teams[0]?.id ?? '' } : w))
+          return { ...d, teams, workspaces }
+        })
+        toast('Team deleted')
+        return true
+      })
+      .catch((err) => {
+        toast(err.message)
+        return false
+      })
 
   const updateUser = (id: string, patch: Partial<User>) =>
     setDb((d) => ({ ...d, users: d.users.map((u) => (u.id === id ? { ...u, ...patch } : u)) }))
@@ -304,9 +378,14 @@ function useStoreValue() {
     updateIssue,
     deleteIssue,
     createIssue,
+    loadComments,
     addComment,
+    editComment,
+    deleteComment,
     createTeam,
     updateTeam,
+    setTeamRole,
+    deleteTeam,
     updateUser,
     inviteMembers,
     removeMember,

@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, computed_field
 
 
 class UserOut(BaseModel):
@@ -106,3 +106,31 @@ class TeamMemberAdd(BaseModel):
 
 class TeamMemberUpdate(BaseModel):
     role: TeamRole
+
+
+# Trimmed first, then checked, so a comment of only spaces is rejected.
+CommentBody = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class CommentCreate(BaseModel):
+    body: CommentBody
+
+
+class CommentUpdate(BaseModel):
+    body: CommentBody
+
+
+class CommentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    issue_id: int
+    author_id: int
+    body: str
+    created_at: datetime
+    updated_at: datetime
+
+    @computed_field
+    @property
+    def edited(self) -> bool:
+        return self.updated_at > self.created_at

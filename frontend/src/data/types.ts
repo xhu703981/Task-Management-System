@@ -29,6 +29,8 @@ export interface Team {
   name: string
   color: string
   memberIds: string[]
+  /** The members whose team role is 'owner'. */
+  ownerIds: string[]
   cyclesEnabled: boolean
   cycleLengthWeeks: number
   statuses: { id: Status; name: string }[]
@@ -81,6 +83,7 @@ export interface Comment {
   authorId: string
   body: string
   createdAt: number
+  edited: boolean
 }
 
 export interface Activity {
