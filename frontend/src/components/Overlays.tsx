@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ChevronRight, CircleDot, Inbox, Layers, Plus, Settings, Sparkles, Tag, Repeat, X, Search, PanelLeft } from 'lucide-react'
+import { ChevronRight, CircleDot, FolderKanban, Inbox, Layers, Plus, Settings, Sparkles, Tag, Repeat, X, Search, PanelLeft } from 'lucide-react'
 import { Menu, type MenuEntry } from './Menu'
 import { Avatar, Modal, PriorityIcon, StatusIcon, TeamAvatar, Toggle } from './ui'
 import { cycleOptions } from './IssueContextMenu'
@@ -69,15 +69,26 @@ export function ConfirmDelete() {
 
 type MenuAt = { x: number; y: number; entries: MenuEntry[]; searchable?: boolean }
 
-export function NewIssueModal() {
-  const { newIssueTeamId, setNewIssueTeamId } = useUi()
-  if (!newIssueTeamId) return null
-  return <NewIssueForm key={newIssueTeamId} initialTeamId={newIssueTeamId} onClose={() => setNewIssueTeamId(null)} />
+/** The project whose page is open (/project/:id), if any. */
+const useCurrentProject = () => {
+  const { db } = useStore()
+  const id = useLocation().pathname.match(/^\/project\/([^/]+)/)?.[1]
+  return db.projects.find((p) => p.id === id)
 }
 
-function NewIssueForm({ initialTeamId, onClose }: { initialTeamId: string; onClose: () => void }) {
+export function NewIssueModal() {
+  const { newIssueTeamId, setNewIssueTeamId } = useUi()
+  const project = useCurrentProject()
+  if (!newIssueTeamId) return null
+  // On a project page, new issues start in that project (if it belongs to the team the modal opens in).
+  const initialProjectId = project?.teamId === newIssueTeamId ? project.id : null
+  return <NewIssueForm key={newIssueTeamId} initialTeamId={newIssueTeamId} initialProjectId={initialProjectId} onClose={() => setNewIssueTeamId(null)} />
+}
+
+function NewIssueForm({ initialTeamId, initialProjectId, onClose }: { initialTeamId: string; initialProjectId: string | null; onClose: () => void }) {
   const { db, user, createIssue } = useStore()
   const [teamId, setTeamId] = useState(initialTeamId)
+  const [projectId, setProjectId] = useState<string | null>(initialProjectId)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [status, setStatus] = useState<Issue['status']>('todo')
@@ -92,6 +103,7 @@ function NewIssueForm({ initialTeamId, onClose }: { initialTeamId: string; onClo
   const team = db.teams.find((t) => t.id === teamId)!
   const assignee = user(assigneeId)
   const cycle = db.cycles.find((c) => c.id === cycleId)
+  const project = db.projects.find((p) => p.id === projectId)
 
   const openMenu = (e: React.MouseEvent, entries: MenuEntry[], searchable?: boolean) => {
     const r = e.currentTarget.getBoundingClientRect()
@@ -100,7 +112,7 @@ function NewIssueForm({ initialTeamId, onClose }: { initialTeamId: string; onClo
 
   const submit = () => {
     if (!title.trim()) return titleRef.current?.focus()
-    createIssue({ teamId, title: title.trim(), description, status, priority, assigneeId, labels, cycleId })
+    createIssue({ teamId, title: title.trim(), description, status, priority, assigneeId, labels, cycleId, projectId })
     if (createMore) {
       setTitle('')
       setDescription('')
@@ -129,6 +141,7 @@ function NewIssueForm({ initialTeamId, onClose }: { initialTeamId: string; onClo
                     setTeamId(t.id)
                     setCycleId(null)
                     setAssigneeId(null)
+                    setProjectId(null) // projects belong to one team
                   },
                 })),
               )
@@ -198,6 +211,17 @@ function NewIssueForm({ initialTeamId, onClose }: { initialTeamId: string; onClo
             onClick={(e) => openMenu(e, labelEntries(allLabels(db.issues), labels, setLabels), true)}
           >
             <Tag size={12} /> {labels.length ? labels.join(', ') : 'Labels'}
+          </button>
+          <button
+            className="chip"
+            onClick={(e) =>
+              openMenu(e, [
+                { label: 'No project', checked: !projectId, onSelect: () => setProjectId(null) },
+                ...db.projects.filter((p) => p.teamId === teamId).map((p) => ({ label: p.name, icon: <FolderKanban size={14} />, checked: p.id === projectId, onSelect: () => setProjectId(p.id) })),
+              ])
+            }
+          >
+            <FolderKanban size={12} /> {project?.name ?? 'Project'}
           </button>
           {team.cyclesEnabled && (
             <button
@@ -355,7 +379,9 @@ export function GlobalHotkeys({ onLogout }: { onLogout: () => void }) {
       } else if (e.key === 'c' || e.key === 'C') {
         e.preventDefault()
         const key = location.pathname.match(/^\/team\/([^/]+)/)?.[1]
-        ui.setNewIssueTeamId((key && teamByKey(key)?.id) || (db.teams[0]?.id ?? null))
+        // On a project page, use the project's team (the modal then preselects the project itself).
+        const projectTeamId = db.projects.find((p) => p.id === location.pathname.match(/^\/project\/([^/]+)/)?.[1])?.teamId
+        ui.setNewIssueTeamId((key && teamByKey(key)?.id) || projectTeamId || (db.teams[0]?.id ?? null))
       } else if (e.key === 'g') {
         pendingG = Date.now()
       } else if (e.key === 's' && Date.now() - pendingG < 1000) {

@@ -91,6 +91,7 @@ export interface NewIssueInput {
   assigneeId: string | null
   labels: string[]
   cycleId: string | null
+  projectId: string | null
 }
 
 function useStoreValue() {
@@ -222,6 +223,7 @@ function useStoreValue() {
         priority: input.priority,
         assignee_id: input.assigneeId ? Number(input.assigneeId) : null,
         labels: input.labels,
+        project_id: input.projectId ? Number(input.projectId) : null,
       })
       .then((a) => {
         // Cycle isn't on the backend yet, so keep what was picked in this browser.

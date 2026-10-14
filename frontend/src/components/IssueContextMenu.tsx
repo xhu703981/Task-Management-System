@@ -198,6 +198,7 @@ function useIssueEntries(issue: Issue): MenuEntry[] {
           assigneeId: issue.assigneeId,
           labels: issue.labels,
           cycleId: issue.cycleId,
+          projectId: issue.projectId,
         }),
     },
     {
