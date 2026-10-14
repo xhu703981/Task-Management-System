@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Filter, LayoutList, Columns3, Plus, SlidersHorizontal, Sparkles, X, Repeat } from 'lucide-react'
 import { Menu, type MenuEntry } from '../components/Menu'
 import { IssueRow } from '../components/IssueRow'
+import { LabelDot, allLabels } from '../components/labels'
 import { Avatar, PriorityIcon, StatusIcon, TeamAvatar } from '../components/ui'
 import { SummaryPanel } from './Summary'
 import { PRIORITIES, STATUSES, statusMeta } from '../data/meta'
@@ -60,7 +61,8 @@ export function IssueListView({ title, issues, teamId, emptyText }: { title: Rea
       .filter((i) => !filters.status.length || filters.status.includes(i.status))
       .filter((i) => !filters.priority.length || filters.priority.includes(i.priority))
       .filter((i) => !filters.assignee.length || filters.assignee.includes(i.assigneeId))
-      .filter((i) => !filters.label.length || i.labelIds.some((l) => filters.label.includes(l)))
+      // Labels match ignoring case, so a "Bug" filter also finds issues labeled "bug".
+      .filter((i) => !filters.label.length || i.labels.some((l) => filters.label.some((f) => f.toLowerCase() === l.toLowerCase())))
     const prio = (p: Priority) => (p === 0 ? 5 : p)
     return sorted.sort((a, b) =>
       orderBy === 'priority' ? prio(a.priority) - prio(b.priority) || b.updatedAt - a.updatedAt : orderBy === 'created' ? b.createdAt - a.createdAt : b.updatedAt - a.updatedAt,
@@ -111,11 +113,12 @@ export function IssueListView({ title, issues, teamId, emptyText }: { title: Rea
       label: 'Labels',
       icon: <span style={{ width: 8, height: 8, borderRadius: 4, background: 'var(--text-tertiary)', display: 'inline-block', margin: 4 }} />,
       submenu: {
-        entries: db.labels.map((l) => ({
-          label: l.name,
-          icon: <span style={{ width: 8, height: 8, borderRadius: 4, background: l.color, display: 'inline-block' }} />,
-          checked: filters.label.includes(l.id),
-          onSelect: () => setFilters((f) => ({ ...f, label: toggle(f.label, l.id) })),
+        searchable: true,
+        entries: allLabels(issues).map((name) => ({
+          label: name,
+          icon: <LabelDot name={name} />,
+          checked: filters.label.includes(name),
+          onSelect: () => setFilters((f) => ({ ...f, label: toggle(f.label, name) })),
         })),
       },
     },
@@ -194,7 +197,7 @@ export function IssueListView({ title, issues, teamId, emptyText }: { title: Rea
               {filters.status.map((s) => <FilterChip key={s} label={`Status: ${statusMeta(s).name}`} onRemove={() => setFilters((f) => ({ ...f, status: toggle(f.status, s) }))} />)}
               {filters.priority.map((p) => <FilterChip key={p} label={`Priority: ${PRIORITIES.find((x) => x.id === p)!.name}`} onRemove={() => setFilters((f) => ({ ...f, priority: toggle(f.priority, p) }))} />)}
               {filters.assignee.map((a) => <FilterChip key={a ?? 'none'} label={`Assignee: ${user(a)?.name ?? 'None'}`} onRemove={() => setFilters((f) => ({ ...f, assignee: toggle(f.assignee, a) }))} />)}
-              {filters.label.map((l) => <FilterChip key={l} label={`Label: ${db.labels.find((x) => x.id === l)!.name}`} onRemove={() => setFilters((f) => ({ ...f, label: toggle(f.label, l) }))} />)}
+              {filters.label.map((l) => <FilterChip key={l} label={`Label: ${l}`} onRemove={() => setFilters((f) => ({ ...f, label: toggle(f.label, l) }))} />)}
               <button className="btn sm ghost" onClick={() => setFilters(NO_FILTERS)}>Clear filters</button>
             </>
           )}

@@ -4,6 +4,7 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Menu, type MenuEntry } from './Menu'
+import { allLabels, labelEntries } from './labels'
 import { Avatar, PriorityIcon, StatusIcon, shortDate } from './ui'
 import { PRIORITIES, STATUSES } from '../data/meta'
 import { useStore, useUi } from '../data/store'
@@ -115,15 +116,7 @@ function useIssueEntries(issue: Issue): MenuEntry[] {
       submenu: {
         searchable: true,
         placeholder: 'Add labels…',
-        entries: db.labels.map((l) => {
-          const has = issue.labelIds.includes(l.id)
-          return {
-            label: l.name,
-            icon: <span style={{ width: 8, height: 8, borderRadius: 4, background: l.color, display: 'inline-block' }} />,
-            checked: has,
-            onSelect: () => updateIssue(issue.id, { labelIds: has ? issue.labelIds.filter((x) => x !== l.id) : [...issue.labelIds, l.id] }),
-          }
-        }),
+        entries: labelEntries(allLabels(db.issues), issue.labels, (labels) => updateIssue(issue.id, { labels })),
       },
     },
     {
@@ -203,7 +196,7 @@ function useIssueEntries(issue: Issue): MenuEntry[] {
           status: issue.status,
           priority: issue.priority,
           assigneeId: issue.assigneeId,
-          labelIds: issue.labelIds,
+          labels: issue.labels,
           cycleId: issue.cycleId,
         }),
     },

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, computed_field
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, StringConstraints, computed_field
 
 
 class UserOut(BaseModel):
@@ -30,6 +30,25 @@ class Token(BaseModel):
 
 IssueStatus = Literal["backlog", "todo", "in_progress", "in_review", "done", "canceled"]
 
+LabelName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
+
+
+def merge_labels(labels: list[str]) -> list[str]:
+    """Drop repeats, treating "Bug" and "bug" as the same label; the first spelling wins."""
+    merged: list[str] = []
+    seen: set[str] = set()
+    for label in labels:
+        if label.lower() not in seen:
+            seen.add(label.lower())
+            merged.append(label)
+    if len(merged) > 5:
+        raise ValueError("An issue can have at most 5 labels")
+    return merged
+
+
+# Each item is trimmed and length-checked first (LabelName), then the whole list is merged and counted.
+Labels = Annotated[list[LabelName], AfterValidator(merge_labels)]
+
 
 class IssueCreate(BaseModel):
     team_id: int
@@ -38,6 +57,7 @@ class IssueCreate(BaseModel):
     status: IssueStatus = "backlog"
     priority: int = Field(default=0, ge=0, le=4)
     assignee_id: int | None = None
+    labels: Labels = []
 
 
 class IssueOut(BaseModel):
@@ -52,6 +72,7 @@ class IssueOut(BaseModel):
     priority: int
     creator_id: int
     assignee_id: int | None
+    labels: list[str]
     created_at: datetime
     updated_at: datetime
 
@@ -62,6 +83,7 @@ class IssueUpdate(BaseModel):
     status: IssueStatus = None
     priority: int = Field(default=None, ge=0, le=4)
     assignee_id: int | None = None
+    labels: Labels = None
 
 
 TeamRole = Literal["owner", "member"]

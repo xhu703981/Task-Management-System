@@ -5,6 +5,8 @@ import { Check, ChevronRight, Search } from 'lucide-react'
 export type MenuEntry =
   | { kind: 'divider' }
   | { kind: 'label'; label: string }
+  /** Hidden until something is typed in the search box; then shows the entry `make` builds from it (if any). */
+  | { kind: 'create'; make: (query: string) => MenuEntry | null }
   | {
       kind?: 'item'
       label: string
@@ -67,9 +69,14 @@ function Panel({ entries, anchor, onClose, searchable, placeholder, width, openI
     setPos({ left: Math.max(8, left), top })
   }, [anchor.x, anchor.y, anchor.flipX])
 
-  const visible = query
-    ? entries.filter((e) => isItem(e) && e.label.toLowerCase().includes(query.toLowerCase()))
-    : entries
+  const q = query.trim()
+  const visible = entries.flatMap((e): MenuEntry[] => {
+    if (e.kind === 'create') {
+      const made = q ? e.make(q) : null
+      return made ? [made] : []
+    }
+    return !q || (isItem(e) && e.label.toLowerCase().includes(q.toLowerCase())) ? [e] : []
+  })
 
   const openItem = openIndex !== null ? visible[openIndex] : null
   const openRect = openIndex !== null ? itemRefs.current[openIndex]?.getBoundingClientRect() : undefined
@@ -85,6 +92,7 @@ function Panel({ entries, anchor, onClose, searchable, placeholder, width, openI
       {visible.map((e, i) => {
         if (e.kind === 'divider') return <div key={i} className="menu-divider" />
         if (e.kind === 'label') return <div key={i} className="menu-label">{e.label}</div>
+        if (e.kind === 'create') return null
         return (
           <button
             key={i}

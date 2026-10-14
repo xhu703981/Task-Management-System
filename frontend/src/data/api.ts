@@ -45,6 +45,7 @@ export interface ApiIssue {
   priority: number
   creator_id: number
   assignee_id: number | null
+  labels: string[]
   created_at: string
   updated_at: string
 }
@@ -85,6 +86,7 @@ export interface ApiIssueFields {
   status?: string
   priority?: number
   assignee_id?: number | null
+  labels?: string[]
 }
 
 /** The shape of TeamOut on the backend. */

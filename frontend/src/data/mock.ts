@@ -103,7 +103,7 @@ function makeIssues(teamId: string, titles: string[], cycleIds: string[], projec
       status,
       priority: pick<Priority>([0, 1, 2, 2, 3, 3, 3, 4]),
       assigneeId: rand() < 0.15 ? null : pick(memberIds),
-      labelIds: rand() < 0.7 ? [pick(['bug', 'feature', 'improvement', 'design', 'infra'])] : [],
+      labels: rand() < 0.7 ? [pick(['Bug', 'Feature', 'Improvement', 'Design', 'Infra'])] : [],
       cycleId: status === 'backlog' ? null : pick([...cycleIds, null]),
       projectId: rand() < 0.5 ? pick(projectIds) : null,
       parentId: null,
@@ -150,13 +150,6 @@ export function createSeed(): Db {
       { id: 'eng-c13', teamId: 'eng', number: 13, start: now + 11 * DAY, end: now + 25 * DAY },
       { id: 'key-c3', teamId: 'key', number: 3, start: daysAgo(2), end: now + 5 * DAY },
       { id: 'key-c4', teamId: 'key', number: 4, start: now + 5 * DAY, end: now + 12 * DAY },
-    ],
-    labels: [
-      { id: 'bug', name: 'Bug', color: '#eb5757' },
-      { id: 'feature', name: 'Feature', color: '#a78bfa' },
-      { id: 'improvement', name: 'Improvement', color: '#26b5ce' },
-      { id: 'design', name: 'Design', color: '#f2994a' },
-      { id: 'infra', name: 'Infra', color: '#4cb782' },
     ],
     projects: [
       { id: 'p-web', teamId: 'eng', name: 'Web app parity' },

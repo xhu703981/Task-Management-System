@@ -1,22 +1,19 @@
 import { useNavigate } from 'react-router-dom'
 import { Repeat } from 'lucide-react'
 import { Avatar, PriorityIcon, StatusIcon, shortDate } from './ui'
+import { labelColor } from './labels'
 import { useStore, useUi } from '../data/store'
 import type { Issue } from '../data/types'
 
 export function IssueLabels({ issue }: { issue: Issue }) {
-  const { db } = useStore()
   return (
     <>
-      {issue.labelIds.map((id) => {
-        const l = db.labels.find((x) => x.id === id)
-        return l ? (
-          <span key={id} className="chip">
-            <span className="dot" style={{ background: l.color }} />
-            {l.name}
-          </span>
-        ) : null
-      })}
+      {issue.labels.map((name) => (
+        <span key={name} className="chip">
+          <span className="dot" style={{ background: labelColor(name) }} />
+          {name}
+        </span>
+      ))}
     </>
   )
 }

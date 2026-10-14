@@ -44,12 +44,6 @@ export interface Cycle {
   end: number
 }
 
-export interface Label {
-  id: string
-  name: string
-  color: string
-}
-
 export interface Project {
   id: string
   teamId: string
@@ -65,7 +59,8 @@ export interface Issue {
   status: Status
   priority: Priority
   assigneeId: string | null
-  labelIds: string[]
+  /** Free-text labels, at most 5 (see components/labels.tsx). */
+  labels: string[]
   cycleId: string | null
   projectId: string | null
   parentId: string | null
@@ -149,7 +144,6 @@ export interface Db {
   users: User[]
   teams: Team[]
   cycles: Cycle[]
-  labels: Label[]
   projects: Project[]
   issues: Issue[]
   comments: Comment[]

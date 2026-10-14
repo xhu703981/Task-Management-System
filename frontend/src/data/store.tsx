@@ -38,12 +38,11 @@ const toTeam = (d: Db, a: api.ApiTeam): Team => {
   }
 }
 
-/** Labels, cycles, etc. aren't on the backend yet: they come from the local copy, or defaults. */
+/** Cycles, projects, etc. aren't on the backend yet: they come from the local copy, or defaults. */
 const toIssue = (d: Db, a: api.ApiIssue): Issue => {
   const local = d.issues.find((i) => i.id === String(a.id))
   const updatedAt = Date.parse(a.updated_at)
   return {
-    labelIds: [],
     cycleId: null,
     projectId: null,
     parentId: null,
@@ -59,6 +58,7 @@ const toIssue = (d: Db, a: api.ApiIssue): Issue => {
     status: a.status as Status,
     priority: a.priority as Priority,
     assigneeId: a.assignee_id === null ? null : String(a.assignee_id),
+    labels: a.labels,
     createdAt: Date.parse(a.created_at),
     updatedAt,
     completedAt: a.status === 'done' ? local?.completedAt ?? updatedAt : null,
@@ -81,7 +81,7 @@ export interface NewIssueInput {
   status: Issue['status']
   priority: Issue['priority']
   assigneeId: string | null
-  labelIds: string[]
+  labels: string[]
   cycleId: string | null
 }
 
@@ -120,7 +120,7 @@ function useStoreValue() {
     }
     if (patch.priority !== undefined) return `set priority to ${priorityName(patch.priority)}`
     if ('cycleId' in patch) return patch.cycleId ? 'moved to a cycle' : 'removed from cycle'
-    if (patch.labelIds) return 'updated labels'
+    if (patch.labels) return 'updated labels'
     if ('dueDate' in patch) return patch.dueDate ? 'set a due date' : 'removed due date'
     if ('projectId' in patch) return patch.projectId ? 'moved to a project' : 'removed from project'
     return null
@@ -151,13 +151,14 @@ function useStoreValue() {
   const updateIssue = (id: string, patch: IssuePatch) => {
     const before = dbRef.current.issues.find((i) => i.id === id)
     setLocalIssue(id, patch)
-    // Only these fields exist on the backend; labels, cycle, favorite, etc. stay in this browser.
+    // Only these fields exist on the backend; cycle, project, favorite, etc. stay in this browser.
     const fields: api.ApiIssueFields = {}
     if (patch.title !== undefined) fields.title = patch.title
     if (patch.description !== undefined) fields.description = patch.description
     if (patch.status !== undefined) fields.status = patch.status
     if (patch.priority !== undefined) fields.priority = patch.priority
     if ('assigneeId' in patch) fields.assignee_id = patch.assigneeId ? Number(patch.assigneeId) : null
+    if (patch.labels !== undefined) fields.labels = patch.labels
     if (!before || Object.keys(fields).length === 0) return
     api
       .updateIssue(Number(id), fields)
@@ -210,11 +211,12 @@ function useStoreValue() {
         status: input.status,
         priority: input.priority,
         assignee_id: input.assigneeId ? Number(input.assigneeId) : null,
+        labels: input.labels,
       })
       .then((a) => {
-        // Labels and cycle aren't on the backend yet, so keep what was picked in this browser.
+        // Cycle isn't on the backend yet, so keep what was picked in this browser.
         setDb((d) => {
-          const issue: Issue = { ...toIssue(d, a), labelIds: input.labelIds, cycleId: input.cycleId }
+          const issue: Issue = { ...toIssue(d, a), cycleId: input.cycleId }
           return logActivity({ ...d, issues: [issue, ...d.issues] }, issue.id, 'created the issue')
         })
         toast(`${team(input.teamId).key}-${a.number} created`)

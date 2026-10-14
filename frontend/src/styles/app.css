@@ -181,7 +181,7 @@ button.chip:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 /* ---------- Menu ---------- */
 .menu {
-  position: fixed; z-index: 100; min-width: 240px; max-width: 280px; background: var(--bg-elevated);
+  position: fixed; z-index: 250; min-width: 240px; max-width: 280px; background: var(--bg-elevated); /* above .overlay, so menus opened from a modal can be clicked */
   border: 1px solid var(--border-strong); border-radius: var(--radius-md); padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.4);
 }
 .menu-item {

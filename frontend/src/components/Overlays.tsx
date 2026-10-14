@@ -4,6 +4,7 @@ import { ChevronRight, CircleDot, Inbox, Layers, Plus, Settings, Sparkles, Tag, 
 import { Menu, type MenuEntry } from './Menu'
 import { Avatar, Modal, PriorityIcon, StatusIcon, TeamAvatar, Toggle } from './ui'
 import { cycleOptions } from './IssueContextMenu'
+import { allLabels, labelEntries } from './labels'
 import { PRIORITIES, STATUSES, priorityName, statusMeta } from '../data/meta'
 import { useStore, useUi } from '../data/store'
 import type { Issue } from '../data/types'
@@ -82,7 +83,7 @@ function NewIssueForm({ initialTeamId, onClose }: { initialTeamId: string; onClo
   const [status, setStatus] = useState<Issue['status']>('todo')
   const [priority, setPriority] = useState<Issue['priority']>(0)
   const [assigneeId, setAssigneeId] = useState<string | null>(null)
-  const [labelIds, setLabelIds] = useState<string[]>([])
+  const [labels, setLabels] = useState<string[]>([])
   const [cycleId, setCycleId] = useState<string | null>(null)
   const [createMore, setCreateMore] = useState(false)
   const [menu, setMenu] = useState<MenuAt | null>(null)
@@ -99,7 +100,7 @@ function NewIssueForm({ initialTeamId, onClose }: { initialTeamId: string; onClo
 
   const submit = () => {
     if (!title.trim()) return titleRef.current?.focus()
-    createIssue({ teamId, title: title.trim(), description, status, priority, assigneeId, labelIds, cycleId })
+    createIssue({ teamId, title: title.trim(), description, status, priority, assigneeId, labels, cycleId })
     if (createMore) {
       setTitle('')
       setDescription('')
@@ -194,20 +195,9 @@ function NewIssueForm({ initialTeamId, onClose }: { initialTeamId: string; onClo
           </button>
           <button
             className="chip"
-            onClick={(e) =>
-              openMenu(
-                e,
-                db.labels.map((l) => ({
-                  label: l.name,
-                  icon: <span style={{ width: 8, height: 8, borderRadius: 4, background: l.color, display: 'inline-block' }} />,
-                  checked: labelIds.includes(l.id),
-                  onSelect: () => setLabelIds((ids) => (ids.includes(l.id) ? ids.filter((x) => x !== l.id) : [...ids, l.id])),
-                })),
-                true,
-              )
-            }
+            onClick={(e) => openMenu(e, labelEntries(allLabels(db.issues), labels, setLabels), true)}
           >
-            <Tag size={12} /> {labelIds.length ? labelIds.map((id) => db.labels.find((l) => l.id === id)!.name).join(', ') : 'Labels'}
+            <Tag size={12} /> {labels.length ? labels.join(', ') : 'Labels'}
           </button>
           {team.cyclesEnabled && (
             <button

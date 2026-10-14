@@ -4,6 +4,7 @@ import { CalendarDays, FolderKanban, MoreHorizontal, Pencil, Plus, Repeat, Star,
 import { Menu, type MenuEntry } from '../components/Menu'
 import { AIBlock, summarizeIssue, useAiSummary } from '../components/AI'
 import { IssueLabels } from '../components/IssueRow'
+import { allLabels, labelEntries } from '../components/labels'
 import { Avatar, PriorityIcon, StatusIcon, TeamAvatar, timeAgo } from '../components/ui'
 import { cycleOptions } from '../components/IssueContextMenu'
 import { PRIORITIES, STATUSES, priorityName, statusMeta } from '../data/meta'
@@ -287,22 +288,10 @@ function IssueDetailView({ issue }: { issue: Issue }) {
               className="prop-btn"
               style={{ flexWrap: 'wrap', height: 'auto', minHeight: 28, padding: '4px 8px' }}
               onClick={(e) =>
-                openAt(
-                  e,
-                  db.labels.map((l) => {
-                    const has = issue.labelIds.includes(l.id)
-                    return {
-                      label: l.name,
-                      icon: <span style={{ width: 8, height: 8, borderRadius: 4, background: l.color, display: 'inline-block' }} />,
-                      checked: has,
-                      onSelect: () => updateIssue(issue.id, { labelIds: has ? issue.labelIds.filter((x) => x !== l.id) : [...issue.labelIds, l.id] }),
-                    }
-                  }),
-                  true,
-                )
+                openAt(e, labelEntries(allLabels(db.issues), issue.labels, (labels) => updateIssue(issue.id, { labels })), true)
               }
             >
-              {issue.labelIds.length ? <IssueLabels issue={issue} /> : <span className="faint row"><Tag size={14} /> Add label</span>}
+              {issue.labels.length ? <IssueLabels issue={issue} /> : <span className="faint row"><Tag size={14} /> Add label</span>}
             </button>
           </Prop>
           {t.cyclesEnabled && (

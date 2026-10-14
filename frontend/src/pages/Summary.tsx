@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowRight, RefreshCw, Sparkles, X } from 'lucide-react'
 import { AIBlock, summarizeIssues, useAiSummary } from '../components/AI'
+import { LabelDot, allLabels } from '../components/labels'
 import { Avatar, PriorityIcon, StatusIcon, TeamAvatar, timeAgo } from '../components/ui'
 import { PRIORITIES, STATUSES } from '../data/meta'
 import { useStore } from '../data/store'
@@ -199,7 +200,7 @@ export default function TeamSummary() {
     ...team.memberIds.map((id) => ({ key: id, label: <><Avatar user={user(id)} size={16} /> {user(id)?.name}</>, value: open.filter((i) => i.assigneeId === id).length })),
     { key: 'none', label: <><Avatar user={null} size={16} /> Unassigned</>, value: open.filter((i) => !i.assigneeId).length },
   ]
-  const labelled = issues.filter((i) => i.labelIds.length)
+  const labelled = issues.filter((i) => i.labels.length)
 
   return (
     <>
@@ -280,10 +281,10 @@ export default function TeamSummary() {
             <h4>Types of work</h4>
             <HBars
               unit="%"
-              rows={db.labels.map((l) => ({
-                key: l.id,
-                label: <><span style={{ width: 8, height: 8, borderRadius: 4, background: l.color }} /> {l.name}</>,
-                value: Math.round((issues.filter((i) => i.labelIds.includes(l.id)).length / Math.max(1, labelled.length)) * 100),
+              rows={allLabels(issues).map((name) => ({
+                key: name,
+                label: <><LabelDot name={name} /> {name}</>,
+                value: Math.round((issues.filter((i) => i.labels.some((l) => l.toLowerCase() === name.toLowerCase())).length / Math.max(1, labelled.length)) * 100),
               }))}
             />
             <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>% of labelled issues</div>

@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, SmallInteger, String, Text, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -67,6 +68,7 @@ class Issue(Base):
             name="status_valid",
         ),
         CheckConstraint("priority BETWEEN 0 AND 4", name="priority_valid"),
+        CheckConstraint("cardinality(labels) <= 5", name="labels_max_5"),
         UniqueConstraint("team_id", "number", name="uq_issues_team_id_number"),
     )
 
@@ -79,6 +81,7 @@ class Issue(Base):
     priority: Mapped[int] = mapped_column(SmallInteger, server_default="0")
     creator_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    labels: Mapped[list[str]] = mapped_column(ARRAY(String(32)), server_default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
