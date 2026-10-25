@@ -7,22 +7,24 @@ import { AuthGate } from './components/AuthGate'
 import { clearToken } from './data/api'
 import { IssueContextMenu } from './components/IssueContextMenu'
 import { CommandPalette, ConfirmDelete, GlobalHotkeys, NewIssueModal, Toasts } from './components/Overlays'
-import TeamIssues, { MyIssues, ProjectIssues } from './pages/IssueList'
+import ProjectIssues, { MyIssues } from './pages/IssueList'
 import IssueDetail from './pages/IssueDetail'
 import Login from './pages/Login'
-import Cycles, { CycleDetail } from './pages/Cycles'
-import TeamSummary, { AllSummaries } from './pages/Summary'
-import { Inbox, Projects } from './pages/Misc'
+import Backlog from './pages/Backlog'
+import Board from './pages/Board'
+import Sprints, { SprintIssues } from './pages/Sprints'
+import ProjectSummary, { AllSummaries } from './pages/Summary'
+import { Epics, Inbox } from './pages/Misc'
 import { ConnectedAccounts, Profile, SecurityAccess } from './pages/settings/Personal'
-import { ApiSettings, MembersSettings, SecuritySettings, TeamsSettings, WorkspaceSettings } from './pages/settings/Admin'
-import { CreateTeam, TeamSettings } from './pages/settings/Teams'
+import { ApiSettings, MembersSettings, ProjectsSettings, SecuritySettings, WorkspaceSettings } from './pages/settings/Admin'
+import { CreateProject, ProjectSettings } from './pages/settings/Projects'
 import { IntegrationDetail, Integrations } from './pages/settings/Integrations'
 
 function Home() {
-  const { db, team } = useStore()
+  const { db, project } = useStore()
   const ws = db.workspaces.find((w) => w.id === db.currentWorkspaceId)!
-  if (!ws.defaultTeamId) return <Navigate to="/my-issues" replace /> // you're in no team yet
-  return <Navigate to={`/team/${team(ws.defaultTeamId).key}/issues`} replace />
+  if (!ws.defaultProjectId) return <Navigate to="/my-issues" replace /> // you're in no project yet
+  return <Navigate to={`/project/${project(ws.defaultProjectId).key}/board`} replace />
 }
 
 function AppRoutes() {
@@ -31,7 +33,7 @@ function AppRoutes() {
   const logout = useCallback(() => {
     ui.setContextMenu(null)
     ui.setPaletteOpen(false)
-    ui.setNewIssueTeamId(null)
+    ui.setNewIssue(null)
     clearToken()
     navigate('/login', { replace: true })
   }, [ui, navigate])
@@ -55,15 +57,16 @@ function AppRoutes() {
           <Route index element={<Home />} />
           <Route path="inbox" element={<Inbox />} />
           <Route path="my-issues" element={<MyIssues />} />
-          <Route path="projects" element={<Projects />} />
           <Route path="summaries" element={<AllSummaries />} />
-          <Route path="team/:teamKey/issues" element={<TeamIssues />} />
-          <Route path="team/:teamKey/cycles" element={<Cycles />} />
-          <Route path="team/:teamKey/cycles/:cycleId" element={<CycleDetail />} />
-          <Route path="team/:teamKey/projects" element={<Projects />} />
-          <Route path="project/:projectId" element={<ProjectIssues />} />
-          <Route path="team/:teamKey/summary" element={<TeamSummary />} />
-          <Route path="issue/:issueId" element={<IssueDetail />} />
+          <Route path="project/:projectKey" element={<Navigate to="board" replace />} />
+          <Route path="project/:projectKey/backlog" element={<Backlog />} />
+          <Route path="project/:projectKey/board" element={<Board />} />
+          <Route path="project/:projectKey/issues" element={<ProjectIssues />} />
+          <Route path="project/:projectKey/epics" element={<Epics />} />
+          <Route path="project/:projectKey/sprints" element={<Sprints />} />
+          <Route path="project/:projectKey/sprints/:sprintId" element={<SprintIssues />} />
+          <Route path="project/:projectKey/summary" element={<ProjectSummary />} />
+          <Route path="issue/:issueKey" element={<IssueDetail />} />
         </Route>
         <Route path="settings" element={<SettingsShell />}>
           <Route index element={<Navigate to="profile" replace />} />
@@ -73,12 +76,12 @@ function AppRoutes() {
           <Route path="integrations" element={<Integrations />} />
           <Route path="integrations/:integrationId" element={<IntegrationDetail />} />
           <Route path="workspace" element={<WorkspaceSettings />} />
-          <Route path="teams" element={<TeamsSettings />} />
-          <Route path="teams/:teamKey" element={<TeamSettings />} />
+          <Route path="projects" element={<ProjectsSettings />} />
+          <Route path="projects/:projectKey" element={<ProjectSettings />} />
           <Route path="members" element={<MembersSettings />} />
           <Route path="security" element={<SecuritySettings />} />
           <Route path="api" element={<ApiSettings />} />
-          <Route path="new-team" element={<CreateTeam />} />
+          <Route path="new-project" element={<CreateProject />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -16,11 +16,12 @@ export function PageHeader({ title, desc }: { title: string; desc?: string }) {
 /* ---------- Profile ---------- */
 
 export function Profile() {
-  const { me, updateUser, toast } = useStore()
+  const { me, updateUser, updateMe, toast } = useStore()
   const [name, setName] = useState(me.name)
   const [username, setUsername] = useState(me.username)
+  const [email, setEmail] = useState(me.email)
   const fileRef = useRef<HTMLInputElement>(null)
-  const dirty = name !== me.name || username !== me.username
+  const dirty = name !== me.name || username !== me.username || email !== me.email
 
   const onFile = (file: File | undefined) => {
     if (!file) return
@@ -47,11 +48,11 @@ export function Profile() {
       </div>
       <form
         style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault()
-          if (!name.trim() || !username.trim()) return
-          updateUser(me.id, { name: name.trim(), username: username.trim() })
-          toast('Profile saved')
+          if (!name.trim() || !username.trim() || !email.trim()) return
+          // On failure (e.g. the username is taken) the reason shows as a toast and the form keeps what was typed.
+          if (await updateMe({ name: name.trim(), username: username.trim(), email: email.trim() })) toast('Profile saved')
         }}
       >
         <label className="field">
@@ -63,13 +64,8 @@ export function Profile() {
           <input className="input" value={username} onChange={(e) => setUsername(e.target.value.replace(/\s/g, ''))} />
         </label>
         <label className="field">
-          <span>
-            Email{' '}
-            <button type="button" className="btn ghost" style={{ height: 'auto', padding: 0, color: 'var(--accent)' }} onClick={() => toast('Email change requires verification — not in this demo')}>
-              Change
-            </button>
-          </span>
-          <input className="input" value={me.email} readOnly />
+          <span>Email</span>
+          <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </label>
         <div>
           <button className="btn primary" type="submit" disabled={!dirty}>Save</button>
@@ -187,7 +183,7 @@ export function ApiKeysSection({ title = 'Personal API keys' }: { title?: string
 /* ---------- Security & access ---------- */
 
 export function SecurityAccess() {
-  const { db, setDb, toast } = useStore()
+  const { db, setDb, toast, changePassword } = useStore()
   const [pwOpen, setPwOpen] = useState(false)
   const [pw, setPw] = useState({ current: '', next: '' })
   const deviceIcon = (d: string) => (d.includes('iPhone') ? <Smartphone size={16} /> : d.includes('Desktop') ? <Laptop size={16} /> : <Monitor size={16} />)
@@ -198,7 +194,7 @@ export function SecurityAccess() {
       <section className="settings-section" style={{ marginTop: 0 }}>
         <h3>Sign-in methods</h3>
         <div className="card" style={{ padding: '0 16px' }}>
-          <SettingsRow title="Password" desc="Last changed 3 months ago">
+          <SettingsRow title="Password" desc="Change the password you log in with.">
             <button className="btn sm" onClick={() => setPwOpen(true)}>Change password</button>
           </SettingsRow>
           <SettingsRow title="Passkeys" desc="Sign in with your fingerprint, face or a security key.">
@@ -264,9 +260,11 @@ export function SecurityAccess() {
       {pwOpen && (
         <Modal onClose={() => setPwOpen(false)} width={420}>
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault()
               if (pw.next.length < 8) return
+              // A wrong current password comes back as a toast; the dialog stays open.
+              if (!(await changePassword(pw.current, pw.next))) return
               setPwOpen(false)
               setPw({ current: '', next: '' })
               toast('Password changed')

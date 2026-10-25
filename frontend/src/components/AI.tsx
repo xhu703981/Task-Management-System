@@ -11,7 +11,7 @@ export type Segment = string | { issueId: string }
 export type Bullet = Segment[]
 
 const DAY = 86_400_000
-const OPEN = new Set(['backlog', 'todo', 'in_progress', 'in_review'])
+const OPEN = new Set(['todo', 'in_progress', 'in_review'])
 
 /*
  * Mock "AI" summarizers. They build the narrative deterministically from the data so the UI
@@ -46,13 +46,13 @@ export function summarizeIssues(store: Store, issues: Issue[], sinceDays: number
       'At risk: ',
       ...atRisk.flatMap((i, n): Segment[] => [
         { issueId: i.id },
-        ` (${i.priority === 1 ? 'urgent' : 'due soon'}, ${statusMeta(i.status).name.toLowerCase()})${n < atRisk.length - 1 ? ', ' : '.'}`,
+        ` (${i.priority === 1 ? 'highest priority' : 'due soon'}, ${statusMeta(i.status).name.toLowerCase()})${n < atRisk.length - 1 ? ', ' : '.'}`,
       ]),
     ])
   }
   if (inReview.length > 2) bullets.push([`Blocker: review queue is building up (${inReview.length} issues), starting with `, { issueId: inReview[0].id }, '.'])
   if (unassigned.length) bullets.push([`${unassigned.length} open issue${unassigned.length === 1 ? ' has' : 's have'} no owner, e.g. `, { issueId: unassigned[0].id }, '. Consider assigning them during triage.'])
-  if (topId) bullets.push([`Workload: ${store.user(topId)!.name} holds the most open work (${topCount} issues).`])
+  if (topId) bullets.push([`Workload: ${store.user(topId)?.name ?? 'Someone'} holds the most open work (${topCount} issues).`])
   return bullets.slice(0, 6)
 }
 
@@ -64,7 +64,7 @@ export function summarizeIssue(store: Store, issue: Issue, comments: Comment[]):
   ]
   if (comments.length) {
     const last = comments[comments.length - 1]
-    bullets.push([`Discussion: ${comments.length} comment${comments.length === 1 ? '' : 's'}; latest from ${store.user(last.authorId)!.name}: “${last.body.slice(0, 90)}${last.body.length > 90 ? '…' : ''}”`])
+    bullets.push([`Discussion: ${comments.length} comment${comments.length === 1 ? '' : 's'}; latest from ${store.user(last.authorId)?.name ?? 'a former member'}: “${last.body.slice(0, 90)}${last.body.length > 90 ? '…' : ''}”`])
   } else bullets.push(['No discussion yet.'])
   if (issue.dueDate) bullets.push([`Due ${new Date(issue.dueDate).toLocaleDateString()}${issue.dueDate < Date.now() ? ' (overdue)' : ''}.`])
   return bullets
@@ -114,7 +114,7 @@ export function BulletText({ bullet }: { bullet: Bullet }) {
         const issue = db.issues.find((x) => x.id === s.issueId)
         if (!issue) return <span key={i} className="mono faint">deleted</span>
         return (
-          <button key={i} className="id-chip" title={issue.title} onClick={() => navigate(`/issue/${issue.id}`)}>
+          <button key={i} className="id-chip" title={issue.title} onClick={() => navigate(`/issue/${issue.key}`)}>
             {issueKey(issue)}
           </button>
         )

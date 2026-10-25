@@ -11,6 +11,8 @@ class Settings(BaseSettings):
 
     database_url: str
     jwt_secret_key: str
+    jwt_access_expire: int = 3600  # seconds (1 hour)
+    jwt_refresh_expire: int = 604800  # seconds (7 days)
 
 
 settings = Settings()

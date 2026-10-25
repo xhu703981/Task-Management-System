@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { ChevronLeft, Plus, Search } from 'lucide-react'
-import { TeamAvatar } from '../components/ui'
+import { ProjectAvatar } from '../components/ui'
 import { useStore } from '../data/store'
 
 type NavEntry = { label: string; to: string }
@@ -25,7 +25,7 @@ const SECTIONS: { title: string; items: NavEntry[] }[] = [
     title: 'Administration',
     items: [
       { label: 'Workspace', to: '/settings/workspace' },
-      { label: 'Teams', to: '/settings/teams' },
+      { label: 'Projects', to: '/settings/projects' },
       { label: 'Members', to: '/settings/members' },
       { label: 'Security', to: '/settings/security' },
       { label: 'API', to: '/settings/api' },
@@ -40,7 +40,7 @@ export function SettingsShell() {
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
   const match = (label: string) => !q || label.toLowerCase().includes(q)
-  const myTeams = db.teams.filter((t) => t.memberIds.includes(me.id))
+  const myProjects = db.projects.filter((p) => p.memberIds.includes(me.id))
 
   return (
     <div className="shell">
@@ -61,7 +61,7 @@ export function SettingsShell() {
             <div key={s.title} className="nav-section" style={{ marginTop: 12 }}>
               <div className="section-header">{s.title}</div>
               {items.map((i) => (
-                <NavLink key={i.label} to={i.to} end={i.to === '/settings/teams'} className={navClass}>
+                <NavLink key={i.label} to={i.to} end={i.to === '/settings/projects'} className={navClass}>
                   {i.label}
                 </NavLink>
               ))}
@@ -69,18 +69,18 @@ export function SettingsShell() {
           )
         })}
         <div className="nav-section" style={{ marginTop: 12 }}>
-          <div className="section-header">Your teams</div>
-          {myTeams
-            .filter((t) => match(t.name))
-            .map((t) => (
-              <NavLink key={t.id} to={`/settings/teams/${t.key}`} className={navClass}>
-                <TeamAvatar team={t} size={16} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+          <div className="section-header">Your projects</div>
+          {myProjects
+            .filter((p) => match(p.name))
+            .map((p) => (
+              <NavLink key={p.id} to={`/settings/projects/${p.key}`} className={navClass}>
+                <ProjectAvatar project={p} size={16} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
               </NavLink>
             ))}
-          {match('Create a team') && (
-            <NavLink to="/settings/new-team" className={navClass}>
-              <Plus size={16} /> Create a team
+          {me.role === 'Admin' && match('Create a project') && (
+            <NavLink to="/settings/new-project" className={navClass}>
+              <Plus size={16} /> Create a project
             </NavLink>
           )}
         </div>

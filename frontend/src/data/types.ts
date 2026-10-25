@@ -1,7 +1,11 @@
-export type Status = 'backlog' | 'todo' | 'in_progress' | 'in_review' | 'done' | 'canceled'
-/** 0 = none, 1 = urgent, 2 = high, 3 = medium, 4 = low (Linear's ordering) */
-export type Priority = 0 | 1 | 2 | 3 | 4
-export type Role = 'Admin' | 'Member' | 'Guest'
+export type Status = 'todo' | 'in_progress' | 'in_review' | 'done'
+/** 1 = Highest, 2 = High, 3 = Medium, 4 = Low, 5 = Lowest (Jira's ordering) */
+export type Priority = 1 | 2 | 3 | 4 | 5
+export type IssueType = 'task' | 'bug' | 'story' | 'epic'
+/** Workspace role: Admins create projects and manage people. */
+export type Role = 'Admin' | 'Member'
+/** Role inside one project: Admins manage it, Members edit, Viewers only read. */
+export type ProjectRole = 'Admin' | 'Member' | 'Viewer'
 
 export interface User {
   id: string
@@ -10,7 +14,6 @@ export interface User {
   email: string
   color: string
   role: Role
-  status: 'Active' | 'Invited'
   avatarUrl?: string
 }
 
@@ -20,54 +23,57 @@ export interface Workspace {
   slug: string
   color: string
   logo?: string
-  defaultTeamId: string
+  defaultProjectId: string
 }
-
-export interface Team {
-  id: string
-  key: string
-  name: string
-  color: string
-  memberIds: string[]
-  /** The members whose team role is 'owner'. */
-  ownerIds: string[]
-  cyclesEnabled: boolean
-  cycleLengthWeeks: number
-  statuses: { id: Status; name: string }[]
-}
-
-export interface Cycle {
-  id: string
-  teamId: string
-  number: number
-  start: number
-  end: number
-}
-
-export type ProjectStatus = 'planned' | 'in_progress' | 'completed' | 'canceled'
 
 export interface Project {
   id: string
-  teamId: string
+  /** Prefix of its issue keys (CIM-12). Fixed once the project exists. */
+  key: string
   name: string
   description: string
-  status: ProjectStatus
+  color: string
+  leadId: string | null
+  isArchived: boolean
+  /** How many issues exist now (from the backend). */
+  issueCount: number
+  memberIds: string[]
+  roles: Record<string, ProjectRole>
+}
+
+export type SprintStatus = 'planned' | 'active' | 'completed'
+
+export interface Sprint {
+  id: string
+  projectId: string
+  name: string
+  goal: string
+  status: SprintStatus
+  start: number | null
+  end: number | null
+  completedAt: number | null
 }
 
 export interface Issue {
   id: string
-  teamId: string
+  /** "CIM-12", stored by the backend. */
+  key: string
+  projectId: string
   number: number
+  type: IssueType
+  /** The epic this issue belongs to. */
+  parentId: string | null
   title: string
   description: string
   status: Status
   priority: Priority
   assigneeId: string | null
+  reporterId: string | null
+  storyPoints: number
+  /** null = in the backlog */
+  sprintId: string | null
   /** Free-text labels, at most 5 (see components/labels.tsx). */
   labels: string[]
-  cycleId: string | null
-  projectId: string | null
-  parentId: string | null
   dueDate: number | null
   createdAt: number
   updatedAt: number
@@ -79,7 +85,9 @@ export interface Issue {
 export interface Comment {
   id: string
   issueId: string
-  authorId: string
+  authorId: string | null
+  /** The comment this one replies to. */
+  parentId: string | null
   body: string
   createdAt: number
   edited: boolean
@@ -146,9 +154,8 @@ export interface Db {
   workspaces: Workspace[]
   currentWorkspaceId: string
   users: User[]
-  teams: Team[]
-  cycles: Cycle[]
   projects: Project[]
+  sprints: Sprint[]
   issues: Issue[]
   comments: Comment[]
   activity: Activity[]

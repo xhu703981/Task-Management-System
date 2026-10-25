@@ -1,51 +1,46 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Filter, LayoutList, Columns3, Plus, SlidersHorizontal, Sparkles, X, Repeat } from 'lucide-react'
+import { useParams, useSearchParams } from 'react-router-dom'
+import { Filter, LayoutList, Plus, SlidersHorizontal, Sparkles, Trash2, X, Zap } from 'lucide-react'
 import { Menu, type MenuEntry } from '../components/Menu'
 import { IssueRow } from '../components/IssueRow'
 import { LabelDot, allLabels } from '../components/labels'
-import { Avatar, PriorityIcon, StatusIcon, TeamAvatar } from '../components/ui'
+import { sprintEntries } from '../components/IssueContextMenu'
+import { Avatar, IssueTypeIcon, Modal, PriorityIcon, ProjectAvatar, StatusIcon } from '../components/ui'
 import { SummaryPanel } from './Summary'
-import { PRIORITIES, STATUSES, statusMeta } from '../data/meta'
+import { ISSUE_TYPES, PRIORITIES, STATUSES, priorityName, statusMeta, typeMeta } from '../data/meta'
 import { useStore, useUi } from '../data/store'
 import { getIssues } from '../data/api'
-import type { Issue, Priority, Status } from '../data/types'
+import type { Issue, IssueType, Priority, Status } from '../data/types'
 
-type GroupBy = 'status' | 'priority' | 'assignee' | 'none'
+type GroupBy = 'status' | 'priority' | 'type' | 'assignee' | 'epic' | 'none'
 type OrderBy = 'priority' | 'created' | 'updated'
-type Filters = { status: Status[]; priority: Priority[]; assignee: (string | null)[]; label: string[] }
-const NO_FILTERS: Filters = { status: [], priority: [], assignee: [], label: [] }
+type Filters = { status: Status[]; priority: Priority[]; type: IssueType[]; assignee: (string | null)[]; label: string[] }
+const NO_FILTERS: Filters = { status: [], priority: [], type: [], assignee: [], label: [] }
 
 const TABS = [
   { id: 'all', label: 'All issues', match: () => true },
-  { id: 'active', label: 'Active', match: (i: Issue) => ['todo', 'in_progress', 'in_review'].includes(i.status) },
-  { id: 'backlog', label: 'Backlog', match: (i: Issue) => i.status === 'backlog' },
+  { id: 'open', label: 'Open', match: (i: Issue) => i.status !== 'done' },
+  { id: 'backlog', label: 'Backlog', match: (i: Issue) => i.sprintId === null && i.status !== 'done' },
+  { id: 'done', label: 'Done', match: (i: Issue) => i.status === 'done' },
 ]
 
 const toggle = <T,>(xs: T[], x: T) => (xs.includes(x) ? xs.filter((y) => y !== x) : [...xs, x])
 
-/** Shared list/board view used by team issues and My issues. */
-export function IssueListView({ title, issues, teamId, emptyText }: { title: ReactNode; issues: Issue[]; teamId?: string; emptyText: string }) {
-  const { db, user, updateIssue } = useStore()
+/** Shared list view used by a project's Issues tab, a sprint's issues, and My issues. */
+export function IssueListView({ title, issues, projectId, emptyText }: { title: ReactNode; issues: Issue[]; projectId?: string; emptyText: string }) {
+  const { db, user, canWrite, bulkUpdate, bulkDelete } = useStore()
   const ui = useUi()
   const [params, setParams] = useSearchParams()
   const tab = params.get('tab') ?? 'all'
-  const view = params.get('view') === 'board' ? 'board' : 'list'
   const [groupBy, setGroupBy] = useState<GroupBy>('status')
   const [orderBy, setOrderBy] = useState<OrderBy>('priority')
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[] } | null>(null)
-  const [loading, setLoading] = useState(true)
 
-  // Brief skeleton on scope change, standing in for a network fetch.
-  useEffect(() => {
-    setLoading(true)
-    setSelected(new Set())
-    const t = setTimeout(() => setLoading(false), 350)
-    return () => clearTimeout(t)
-  }, [teamId])
+  useEffect(() => setSelected(new Set()), [projectId])
 
   const setParam = (k: string, v: string | null) => {
     const next = new URLSearchParams(params)
@@ -60,12 +55,12 @@ export function IssueListView({ title, issues, teamId, emptyText }: { title: Rea
       .filter(tabMatch)
       .filter((i) => !filters.status.length || filters.status.includes(i.status))
       .filter((i) => !filters.priority.length || filters.priority.includes(i.priority))
+      .filter((i) => !filters.type.length || filters.type.includes(i.type))
       .filter((i) => !filters.assignee.length || filters.assignee.includes(i.assigneeId))
       // Labels match ignoring case, so a "Bug" filter also finds issues labeled "bug".
       .filter((i) => !filters.label.length || i.labels.some((l) => filters.label.some((f) => f.toLowerCase() === l.toLowerCase())))
-    const prio = (p: Priority) => (p === 0 ? 5 : p)
     return sorted.sort((a, b) =>
-      orderBy === 'priority' ? prio(a.priority) - prio(b.priority) || b.updatedAt - a.updatedAt : orderBy === 'created' ? b.createdAt - a.createdAt : b.updatedAt - a.updatedAt,
+      orderBy === 'priority' ? a.priority - b.priority || b.updatedAt - a.updatedAt : orderBy === 'created' ? b.createdAt - a.createdAt : b.updatedAt - a.updatedAt,
     )
   }, [issues, tab, filters, orderBy])
 
@@ -75,11 +70,20 @@ export function IssueListView({ title, issues, teamId, emptyText }: { title: Rea
       return STATUSES.map((s) => ({ key: s.id, label: s.name, icon: <StatusIcon status={s.id} />, issues: visible.filter((i) => i.status === s.id), status: s.id }))
     if (groupBy === 'priority')
       return PRIORITIES.map((p) => ({ key: String(p.id), label: p.name, icon: <PriorityIcon priority={p.id} />, issues: visible.filter((i) => i.priority === p.id) }))
+    if (groupBy === 'type')
+      return ISSUE_TYPES.map((t) => ({ key: t.id, label: t.name, icon: <IssueTypeIcon type={t.id} />, issues: visible.filter((i) => i.type === t.id) }))
+    if (groupBy === 'epic') {
+      const ids = [...new Set(visible.filter((i) => i.type !== 'epic').map((i) => i.parentId))]
+      return ids.map((id) => {
+        const epic = db.issues.find((i) => i.id === id)
+        return { key: id ?? 'none', label: epic ? `${epic.key} ${epic.title}` : 'No epic', icon: <Zap size={14} />, issues: visible.filter((i) => i.type !== 'epic' && i.parentId === id) }
+      })
+    }
     const ids = [...new Set(visible.map((i) => i.assigneeId))]
-    return ids.map((id) => ({ key: id ?? 'none', label: user(id)?.name ?? 'No assignee', icon: <Avatar user={user(id)} size={16} />, issues: visible.filter((i) => i.assigneeId === id) }))
-  }, [visible, groupBy, user])
+    return ids.map((id) => ({ key: id ?? 'none', label: user(id)?.name ?? 'Unassigned', icon: <Avatar user={user(id)} size={16} />, issues: visible.filter((i) => i.assigneeId === id) }))
+  }, [visible, groupBy, user, db.issues])
 
-  const scopedUsers = teamId ? db.teams.find((t) => t.id === teamId)!.memberIds : db.users.filter((u) => u.status === 'Active').map((u) => u.id)
+  const scopedUsers = projectId ? db.projects.find((p) => p.id === projectId)!.memberIds : db.users.map((u) => u.id)
   const openAt = (e: React.MouseEvent, entries: MenuEntry[]) => {
     const r = e.currentTarget.getBoundingClientRect()
     setMenu({ x: r.right - 240, y: r.bottom + 4, entries })
@@ -97,12 +101,17 @@ export function IssueListView({ title, issues, teamId, emptyText }: { title: Rea
       submenu: { entries: PRIORITIES.map((p) => ({ label: p.name, icon: <PriorityIcon priority={p.id} />, checked: filters.priority.includes(p.id), onSelect: () => setFilters((f) => ({ ...f, priority: toggle(f.priority, p.id) })) })) },
     },
     {
+      label: 'Type',
+      icon: <IssueTypeIcon type="task" />,
+      submenu: { entries: ISSUE_TYPES.map((t) => ({ label: t.name, icon: <IssueTypeIcon type={t.id} />, checked: filters.type.includes(t.id), onSelect: () => setFilters((f) => ({ ...f, type: toggle(f.type, t.id) })) })) },
+    },
+    {
       label: 'Assignee',
       icon: <Avatar user={null} size={16} />,
       submenu: {
         searchable: true,
         entries: [null, ...scopedUsers].map((id) => ({
-          label: user(id)?.name ?? 'No assignee',
+          label: user(id)?.name ?? 'Unassigned',
           icon: <Avatar user={user(id)} size={16} />,
           checked: filters.assignee.includes(id),
           onSelect: () => setFilters((f) => ({ ...f, assignee: toggle(f.assignee, id) })),
@@ -124,15 +133,25 @@ export function IssueListView({ title, issues, teamId, emptyText }: { title: Rea
     },
   ]
 
+  const GROUP_NAMES: Record<GroupBy, string> = { status: 'Status', priority: 'Priority', type: 'Type', assignee: 'Assignee', epic: 'Epic', none: 'No grouping' }
   const displayEntries = (): MenuEntry[] => [
     { kind: 'label', label: 'Grouping' },
-    ...(['status', 'priority', 'assignee', 'none'] as GroupBy[]).map((g) => ({ label: g === 'none' ? 'No grouping' : g[0].toUpperCase() + g.slice(1), checked: groupBy === g, onSelect: () => setGroupBy(g) })),
+    ...(Object.keys(GROUP_NAMES) as GroupBy[]).map((g) => ({ label: GROUP_NAMES[g], checked: groupBy === g, onSelect: () => setGroupBy(g) })),
     { kind: 'divider' },
     { kind: 'label', label: 'Ordering' },
     ...(['priority', 'created', 'updated'] as OrderBy[]).map((o) => ({ label: o === 'priority' ? 'Priority' : o === 'created' ? 'Created' : 'Last updated', checked: orderBy === o, onSelect: () => setOrderBy(o) })),
   ]
 
-  const activeFilterCount = filters.status.length + filters.priority.length + filters.assignee.length + filters.label.length
+  const activeFilterCount = filters.status.length + filters.priority.length + filters.type.length + filters.assignee.length + filters.label.length
+  const selectedIds = [...selected]
+  const clearSelection = () => setSelected(new Set())
+  // A bulk sprint move only makes sense inside one project (sprints belong to one).
+  const selectionProject = new Set(db.issues.filter((i) => selected.has(i.id)).map((i) => i.projectId))
+  const oneProject = selectionProject.size === 1 ? [...selectionProject][0] : null
+  const bulk = (patch: Parameters<typeof bulkUpdate>[1]) => {
+    bulkUpdate(selectedIds, patch)
+    clearSelection()
+  }
 
   return (
     <>
@@ -146,14 +165,6 @@ export function IssueListView({ title, issues, teamId, emptyText }: { title: Rea
           ))}
         </div>
         <span className="spacer" />
-        <div className="row" style={{ gap: 2 }}>
-          <button className={`icon-btn${view === 'list' ? ' active' : ''}`} aria-label="List view" title="List" onClick={() => setParam('view', null)}>
-            <LayoutList size={16} />
-          </button>
-          <button className={`icon-btn${view === 'board' ? ' active' : ''}`} aria-label="Board view" title="Board" onClick={() => setParam('view', 'board')}>
-            <Columns3 size={16} />
-          </button>
-        </div>
         <button className="btn sm ghost" onClick={(e) => openAt(e, filterEntries())}>
           <Filter size={14} /> Filter{activeFilterCount ? ` · ${activeFilterCount}` : ''}
         </button>
@@ -170,33 +181,28 @@ export function IssueListView({ title, issues, teamId, emptyText }: { title: Rea
           {selected.size > 0 ? (
             <>
               <span className="label">{selected.size} selected</span>
-              <button
-                className="btn sm"
-                onClick={(e) =>
-                  openAt(
-                    e,
-                    STATUSES.map((s) => ({
-                      label: s.name,
-                      icon: <StatusIcon status={s.id} />,
-                      onSelect: () => {
-                        selected.forEach((id) => updateIssue(id, { status: s.id }))
-                        setSelected(new Set())
-                      },
-                    })),
-                  )
-                }
-              >
+              <button className="btn sm" onClick={(e) => openAt(e, STATUSES.map((s) => ({ label: s.name, icon: <StatusIcon status={s.id} />, onSelect: () => bulk({ status: s.id }) })))}>
                 Set status
               </button>
-              <button className="btn sm ghost" onClick={() => setSelected(new Set())}>
+              <button className="btn sm" onClick={(e) => openAt(e, PRIORITIES.map((p) => ({ label: p.name, icon: <PriorityIcon priority={p.id} />, onSelect: () => bulk({ priority: p.id }) })))}>
+                Set priority
+              </button>
+              <button className="btn sm" disabled={!oneProject} title={oneProject ? undefined : 'Select issues of one project'} onClick={(e) => oneProject && openAt(e, sprintEntries(db.sprints, oneProject, null, (sprintId) => bulk({ sprintId })).map((x) => ('checked' in x ? { ...x, checked: false } : x)))}>
+                Move to sprint
+              </button>
+              <button className="btn sm danger-outline" onClick={() => setConfirmBulkDelete(true)}>
+                <Trash2 size={14} /> Delete
+              </button>
+              <button className="btn sm ghost" onClick={clearSelection}>
                 Clear selection
               </button>
             </>
           ) : (
             <>
               {filters.status.map((s) => <FilterChip key={s} label={`Status: ${statusMeta(s).name}`} onRemove={() => setFilters((f) => ({ ...f, status: toggle(f.status, s) }))} />)}
-              {filters.priority.map((p) => <FilterChip key={p} label={`Priority: ${PRIORITIES.find((x) => x.id === p)!.name}`} onRemove={() => setFilters((f) => ({ ...f, priority: toggle(f.priority, p) }))} />)}
-              {filters.assignee.map((a) => <FilterChip key={a ?? 'none'} label={`Assignee: ${user(a)?.name ?? 'None'}`} onRemove={() => setFilters((f) => ({ ...f, assignee: toggle(f.assignee, a) }))} />)}
+              {filters.priority.map((p) => <FilterChip key={p} label={`Priority: ${priorityName(p)}`} onRemove={() => setFilters((f) => ({ ...f, priority: toggle(f.priority, p) }))} />)}
+              {filters.type.map((t) => <FilterChip key={t} label={`Type: ${typeMeta(t).name}`} onRemove={() => setFilters((f) => ({ ...f, type: toggle(f.type, t) }))} />)}
+              {filters.assignee.map((a) => <FilterChip key={a ?? 'none'} label={`Assignee: ${user(a)?.name ?? 'Unassigned'}`} onRemove={() => setFilters((f) => ({ ...f, assignee: toggle(f.assignee, a) }))} />)}
               {filters.label.map((l) => <FilterChip key={l} label={`Label: ${l}`} onRemove={() => setFilters((f) => ({ ...f, label: toggle(f.label, l) }))} />)}
               <button className="btn sm ghost" onClick={() => setFilters(NO_FILTERS)}>Clear filters</button>
             </>
@@ -206,20 +212,16 @@ export function IssueListView({ title, issues, teamId, emptyText }: { title: Rea
 
       <div className="content-body">
         <div className="content-main">
-          {loading ? (
-            <ListSkeleton />
-          ) : visible.length === 0 ? (
+          {visible.length === 0 ? (
             <div className="empty-state">
               <LayoutList size={32} className="faint" />
               <div>{issues.length === 0 ? emptyText : 'No issues match this view.'}</div>
-              {teamId && issues.length === 0 && (
-                <button className="btn primary" onClick={() => ui.setNewIssueTeamId(teamId)}>
+              {projectId && issues.length === 0 && canWrite(projectId) && (
+                <button className="btn primary" onClick={() => ui.setNewIssue({ projectId })}>
                   <Plus size={14} /> Create issue
                 </button>
               )}
             </div>
-          ) : view === 'board' ? (
-            <Board issues={visible} />
           ) : (
             groups
               .filter((g) => g.issues.length)
@@ -230,8 +232,12 @@ export function IssueListView({ title, issues, teamId, emptyText }: { title: Rea
                     <span>{g.label}</span>
                     <span className="count">{g.issues.length}</span>
                     <span className="spacer" />
-                    {teamId && (
-                      <button className="icon-btn" aria-label={`New issue in ${g.label}`} onClick={() => ui.setNewIssueTeamId(teamId)}>
+                    {projectId && canWrite(projectId) && (
+                      <button
+                        className="icon-btn"
+                        aria-label={`New issue in ${g.label}`}
+                        onClick={() => ui.setNewIssue({ projectId, ...(groupBy === 'status' ? { status: g.key as Status } : {}) })}
+                      >
                         <Plus size={14} />
                       </button>
                     )}
@@ -257,11 +263,31 @@ export function IssueListView({ title, issues, teamId, emptyText }: { title: Rea
         </div>
         {aiOpen && (
           <aside className="right-panel">
-            <SummaryPanel issues={visible} scopeKey={`${teamId}-${tab}-${JSON.stringify(filters)}`} onClose={() => setAiOpen(false)} />
+            <SummaryPanel issues={visible} scopeKey={`${projectId}-${tab}-${JSON.stringify(filters)}`} onClose={() => setAiOpen(false)} />
           </aside>
         )}
       </div>
       {menu && <Menu x={menu.x} y={menu.y} entries={menu.entries} onClose={() => setMenu(null)} />}
+      {confirmBulkDelete && (
+        <Modal onClose={() => setConfirmBulkDelete(false)} width={420}>
+          <div style={{ padding: '20px 20px 8px' }}>
+            <h2 className="title-md">Delete {selected.size} issues?</h2>
+            <p className="muted" style={{ margin: '8px 0 12px' }}>All of them are deleted, or none if you can’t delete one of them. This can’t be undone.</p>
+          </div>
+          <div className="modal-footer">
+            <button className="btn" onClick={() => setConfirmBulkDelete(false)}>Cancel</button>
+            <button
+              className="btn danger"
+              onClick={async () => {
+                setConfirmBulkDelete(false)
+                if (await bulkDelete(selectedIds)) clearSelection()
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </Modal>
+      )}
     </>
   )
 }
@@ -277,126 +303,35 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
   )
 }
 
-function ListSkeleton() {
+/** Header crumb shared by every page of a project: avatar, name, then the page name. */
+export function ProjectCrumb({ projectId, children }: { projectId: string; children: ReactNode }) {
+  const { project } = useStore()
+  const p = project(projectId)
   return (
-    <div aria-busy="true">
-      {Array.from({ length: 10 }, (_, i) => (
-        <div key={i} className="issue-row" style={{ cursor: 'default' }}>
-          <span className="check-slot" />
-          <div className="skeleton" style={{ width: 14, height: 14 }} />
-          <div className="skeleton" style={{ width: 48, height: 10 }} />
-          <div className="skeleton" style={{ width: `${30 + ((i * 37) % 40)}%`, height: 10 }} />
-        </div>
-      ))}
-    </div>
+    <>
+      <ProjectAvatar project={p} size={16} /> {p.name} <span className="sep">›</span> {children}
+    </>
   )
 }
 
-function Board({ issues }: { issues: Issue[] }) {
-  const { db, user, issueKey, updateIssue } = useStore()
-  const { setContextMenu } = useUi()
-  const navigate = useNavigate()
-  const [dragOver, setDragOver] = useState<Status | null>(null)
-  return (
-    <div className="board">
-      {STATUSES.map((s) => {
-        const col = issues.filter((i) => i.status === s.id)
-        return (
-          <div
-            key={s.id}
-            className="board-col"
-            style={{ outline: dragOver === s.id ? '1px dashed var(--border-strong)' : undefined, borderRadius: 8, minHeight: 200 }}
-            onDragOver={(e) => {
-              e.preventDefault()
-              setDragOver(s.id)
-            }}
-            onDragLeave={() => setDragOver(null)}
-            onDrop={(e) => {
-              const id = e.dataTransfer.getData('text/issue')
-              if (id) updateIssue(id, { status: s.id })
-              setDragOver(null)
-            }}
-          >
-            <div className="board-col-header">
-              <StatusIcon status={s.id} /> {s.name} <span className="faint">{col.length}</span>
-            </div>
-            {col.map((i) => {
-              const cycle = db.cycles.find((c) => c.id === i.cycleId)
-              return (
-                <div
-                  key={i.id}
-                  className="board-card"
-                  draggable
-                  onDragStart={(e) => e.dataTransfer.setData('text/issue', i.id)}
-                  onClick={() => navigate(`/issue/${i.id}`)}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    setContextMenu({ issueId: i.id, x: e.clientX, y: e.clientY })
-                  }}
-                >
-                  <div className="row">
-                    <span className="mono faint">{issueKey(i)}</span>
-                    <span className="spacer" />
-                    <Avatar user={user(i.assigneeId)} size={18} />
-                  </div>
-                  <div style={{ fontWeight: 500 }}>{i.title}</div>
-                  <div className="row" style={{ gap: 6 }}>
-                    <PriorityIcon priority={i.priority} />
-                    {cycle && (
-                      <span className="chip">
-                        <Repeat size={12} /> Cycle {cycle.number}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )
-      })}
-    </div>
-  )
+/** Resolves :projectKey from the URL; renders a not-found message when there's no such project. */
+export function useRouteProject() {
+  const { projectKey } = useParams()
+  const { projectByKey } = useStore()
+  return projectByKey(projectKey ?? '')
 }
 
-export default function TeamIssues() {
-  const { teamKey } = useParams()
-  const { db, teamByKey } = useStore()
-  const team = teamByKey(teamKey ?? '')
-  if (!team) return <div className="empty-state">Team not found.</div>
-  return (
-    <IssueListView
-      key={team.id}
-      teamId={team.id}
-      title={
-        <>
-          <TeamAvatar team={team} size={16} /> {team.name} <span className="sep">›</span> Issues
-        </>
-      }
-      issues={db.issues.filter((i) => i.teamId === team.id)}
-      emptyText={`${team.name} has no issues yet.`}
-    />
-  )
-}
-
-/** The issues in one project: the same list/board view, scoped to the project. */
-export function ProjectIssues() {
-  const { projectId } = useParams()
-  const { db, team } = useStore()
-  const project = db.projects.find((p) => p.id === projectId)
-  if (!project) return <div className="empty-state">This project doesn’t exist or was deleted.</div>
-  const t = team(project.teamId)
+export default function ProjectIssues() {
+  const { db } = useStore()
+  const project = useRouteProject()
+  if (!project) return <div className="empty-state">Project not found.</div>
   return (
     <IssueListView
       key={project.id}
-      teamId={t.id}
-      title={
-        <>
-          <TeamAvatar team={t} size={16} /> {t.name} <span className="sep">›</span>
-          <Link to={`/team/${t.key}/projects`} className="muted">Projects</Link> <span className="sep">›</span> {project.name}
-        </>
-      }
+      projectId={project.id}
+      title={<ProjectCrumb projectId={project.id}>Issues</ProjectCrumb>}
       issues={db.issues.filter((i) => i.projectId === project.id)}
-      emptyText={`${project.name} has no issues yet. Add one from an issue’s Project field.`}
+      emptyText={`${project.name} has no issues yet.`}
     />
   )
 }
@@ -417,5 +352,5 @@ export function MyIssues() {
 // - .then((data) => ...) says what to do when the answer arrives: put it in the box with setIssues(data). That makes React call MyIssues() again.
 // - [] at the end means "only once." Without it, we'd get the infinite loop from before.
 
-  return <IssueListView title="My issues" issues={db.issues} emptyText="No issues yet." />
+  return <IssueListView title="My issues" issues={db.issues.filter((i) => i.assigneeId === db.meId)} emptyText="Nothing is assigned to you." />
 }

@@ -44,7 +44,7 @@ const OPTIONS: Record<string, { title: string; desc: string }[]> = {
     { title: 'Close issue when PR merges', desc: 'Mark linked issues as Done on merge.' },
   ],
   slack: [
-    { title: 'Post new issues to a channel', desc: 'Send a message for each issue created in your teams.' },
+    { title: 'Post new issues to a channel', desc: 'Send a message for each issue created in your projects.' },
     { title: 'Create issues from messages', desc: 'Use the message shortcut to turn a Slack thread into an issue.' },
   ],
   figma: [{ title: 'Show live previews', desc: 'Render Figma links as live embeds in issues.' }],

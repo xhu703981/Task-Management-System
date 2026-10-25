@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16-trixie # postgres:16 + the pgvector extension (VECTOR type, hnsw index); trixie = same Debian as postgres:16, so the text sort rules (collation) match
     container_name: taskmanagement_postgres
     restart: unless-stopped
     environment:

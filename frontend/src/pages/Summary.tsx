@@ -1,15 +1,16 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ArrowRight, RefreshCw, Sparkles, X } from 'lucide-react'
 import { AIBlock, summarizeIssues, useAiSummary } from '../components/AI'
 import { LabelDot, allLabels } from '../components/labels'
-import { Avatar, PriorityIcon, StatusIcon, TeamAvatar, timeAgo } from '../components/ui'
-import { PRIORITIES, STATUSES } from '../data/meta'
+import { Avatar, IssueTypeIcon, PriorityIcon, ProjectAvatar, StatusIcon, timeAgo } from '../components/ui'
+import { useRouteProject } from './IssueList'
+import { ISSUE_TYPES, PRIORITIES, STATUSES } from '../data/meta'
 import { useStore } from '../data/store'
-import type { Issue, Team } from '../data/types'
+import type { Issue, Project, Sprint } from '../data/types'
 
 const DAY = 86_400_000
-type Range = '7' | '14' | '30' | 'cycle'
+type Range = '7' | '14' | '30' | 'sprint'
 
 /* ---------- Chart helpers ---------- */
 
@@ -122,7 +123,7 @@ function BurnUp({ issues, start, end }: { issues: Issue[]; start: number; end: n
         width="100%"
         viewBox={`0 0 ${W} ${H}`}
         role="img"
-        aria-label="Cycle burn-up"
+        aria-label="Sprint burn-up"
         onMouseMove={(e) => {
           const r = e.currentTarget.getBoundingClientRect()
           const px = ((e.clientX - r.left) / r.width) * W
@@ -159,26 +160,23 @@ function BurnUp({ issues, start, end }: { issues: Issue[]; start: number; end: n
 
 /* ---------- Summary page ---------- */
 
-function rangeBounds(range: Range, team: Team, cycles: { teamId: string; start: number; end: number }[]) {
-  if (range === 'cycle') {
-    const c = cycles.find((c) => c.teamId === team.id && c.start <= Date.now() && Date.now() < c.end)
-    if (c) return { since: c.start, days: Math.max(1, Math.ceil((Date.now() - c.start) / DAY)) }
-  }
-  const days = range === 'cycle' ? 14 : Number(range)
+function rangeBounds(range: Range, sprint: Sprint | undefined) {
+  if (range === 'sprint' && sprint?.start) return { since: sprint.start, days: Math.max(1, Math.ceil((Date.now() - sprint.start) / DAY)) }
+  const days = range === 'sprint' ? 14 : Number(range)
   return { since: Date.now() - days * DAY, days }
 }
 
-export default function TeamSummary() {
-  const { teamKey } = useParams()
+export default function ProjectSummary() {
   const store = useStore()
-  const { db, teamByKey, user, issueKey } = store
+  const { db, user, issueKey } = store
   const navigate = useNavigate()
-  const team = teamByKey(teamKey ?? '')
+  const project = useRouteProject()
   const [range, setRange] = useState<Range>('14')
-  const issues = useMemo(() => (team ? db.issues.filter((i) => i.teamId === team.id) : []), [db.issues, team])
-  const { since, days } = team ? rangeBounds(range, team, db.cycles) : { since: 0, days: 14 }
-  const ai = useAiSummary(() => summarizeIssues(store, issues, days), `${team?.id}-${range}`)
-  if (!team) return <div className="empty-state">Team not found.</div>
+  const issues = useMemo(() => (project ? db.issues.filter((i) => i.projectId === project.id) : []), [db.issues, project])
+  const sprint = project ? db.sprints.find((s) => s.projectId === project.id && s.status === 'active') : undefined
+  const { since, days } = rangeBounds(range, sprint)
+  const ai = useAiSummary(() => summarizeIssues(store, issues, days), `${project?.id}-${range}`)
+  if (!project) return <div className="empty-state">Project not found.</div>
 
   const prevSince = since - days * DAY
   const count = (pred: (i: Issue) => boolean) => issues.filter(pred).length
@@ -186,18 +184,17 @@ export default function TeamSummary() {
     { label: 'Completed', now: count((i) => !!i.completedAt && i.completedAt >= since), prev: count((i) => !!i.completedAt && i.completedAt >= prevSince && i.completedAt < since) },
     { label: 'Updated', now: count((i) => i.updatedAt >= since), prev: count((i) => i.updatedAt >= prevSince && i.updatedAt < since) },
     { label: 'Created', now: count((i) => i.createdAt >= since), prev: count((i) => i.createdAt >= prevSince && i.createdAt < since) },
-    { label: 'Due soon', now: count((i) => i.dueDate !== null && i.dueDate < Date.now() + 7 * DAY && !['done', 'canceled'].includes(i.status)), prev: null as number | null },
+    { label: 'Due soon', now: count((i) => i.dueDate !== null && i.dueDate < Date.now() + 7 * DAY && i.status !== 'done'), prev: null as number | null },
   ]
-  const open = issues.filter((i) => !['done', 'canceled'].includes(i.status))
+  const open = issues.filter((i) => i.status !== 'done')
   const staleCount = ai.generatedAt ? issues.filter((i) => i.updatedAt > ai.generatedAt).length : 0
-  const cycle = db.cycles.find((c) => c.teamId === team.id && c.start <= Date.now() && Date.now() < c.end)
   const activity = db.activity
     .filter((a) => a.createdAt >= since && issues.some((i) => i.id === a.issueId))
     .slice()
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 8)
   const workload = [
-    ...team.memberIds.map((id) => ({ key: id, label: <><Avatar user={user(id)} size={16} /> {user(id)?.name}</>, value: open.filter((i) => i.assigneeId === id).length })),
+    ...project.memberIds.map((id) => ({ key: id, label: <><Avatar user={user(id)} size={16} /> {user(id)?.name}</>, value: open.filter((i) => i.assigneeId === id).length })),
     { key: 'none', label: <><Avatar user={null} size={16} /> Unassigned</>, value: open.filter((i) => !i.assigneeId).length },
   ]
   const labelled = issues.filter((i) => i.labels.length)
@@ -206,14 +203,14 @@ export default function TeamSummary() {
     <>
       <div className="content-header">
         <div className="breadcrumb">
-          <TeamAvatar team={team} size={16} /> {team.name} <span className="sep">·</span> Summary
+          <ProjectAvatar project={project} size={16} /> {project.name} <span className="sep">·</span> Summary
         </div>
         <span className="spacer" />
         <select className="select" style={{ width: 160, height: 28 }} value={range} onChange={(e) => setRange(e.target.value as Range)} aria-label="Time range">
           <option value="7">Last 7 days</option>
           <option value="14">Last 14 days</option>
           <option value="30">Last 30 days</option>
-          <option value="cycle">Current cycle</option>
+          <option value="sprint">Active sprint</option>
         </select>
         <button className="btn sm" onClick={ai.regenerate} disabled={ai.state === 'generating'}>
           <RefreshCw size={14} className="ai-icon" /> Regenerate
@@ -258,7 +255,7 @@ export default function TeamSummary() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ fontWeight: 500 }}>{user(a.actorId)?.name}</span> <span className="muted">{a.text}</span>{' '}
                       {issue && (
-                        <button className="id-chip" title={issue.title} onClick={() => navigate(`/issue/${issue.id}`)}>
+                        <button className="id-chip" title={issue.title} onClick={() => navigate(`/issue/${issue.key}`)}>
                           {issueKey(issue)}
                         </button>
                       )}
@@ -274,11 +271,15 @@ export default function TeamSummary() {
             <HBars rows={PRIORITIES.map((p) => ({ key: String(p.id), label: <><PriorityIcon priority={p.id} /> {p.name}</>, value: open.filter((i) => i.priority === p.id).length }))} />
           </div>
           <div className="card card-pad">
-            <h4>Team workload <span className="faint" style={{ fontWeight: 400 }}>· open issues</span></h4>
+            <h4>Workload <span className="faint" style={{ fontWeight: 400 }}>· open issues</span></h4>
             <HBars rows={workload} />
           </div>
           <div className="card card-pad">
-            <h4>Types of work</h4>
+            <h4>Issue types</h4>
+            <HBars rows={ISSUE_TYPES.map((t) => ({ key: t.id, label: <><IssueTypeIcon type={t.id} /> {t.name}</>, value: count((i) => i.type === t.id) }))} />
+          </div>
+          <div className="card card-pad">
+            <h4>Labels</h4>
             <HBars
               unit="%"
               rows={allLabels(issues).map((name) => ({
@@ -290,8 +291,8 @@ export default function TeamSummary() {
             <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>% of labelled issues</div>
           </div>
           <div className="card card-pad">
-            <h4>Cycle progress {cycle && <span className="faint" style={{ fontWeight: 400 }}>· Cycle {cycle.number}</span>}</h4>
-            {cycle ? <BurnUp issues={issues.filter((i) => i.cycleId === cycle.id)} start={cycle.start} end={cycle.end} /> : <div className="muted">No active cycle.</div>}
+            <h4>Sprint progress {sprint && <span className="faint" style={{ fontWeight: 400 }}>· {sprint.name}</span>}</h4>
+            {sprint?.start && sprint.end ? <BurnUp issues={issues.filter((i) => i.sprintId === sprint.id)} start={sprint.start} end={sprint.end} /> : <div className="muted">No active sprint.</div>}
           </div>
         </div>
       </div>
@@ -320,20 +321,20 @@ export function SummaryPanel({ issues, scopeKey, onClose }: { issues: Issue[]; s
   )
 }
 
-function TeamSummaryCard({ team }: { team: Team }) {
+function ProjectSummaryCard({ project }: { project: Project }) {
   const store = useStore()
-  const issues = store.db.issues.filter((i) => i.teamId === team.id)
-  const ai = useAiSummary(() => summarizeIssues(store, issues, 14), team.id)
+  const issues = store.db.issues.filter((i) => i.projectId === project.id)
+  const ai = useAiSummary(() => summarizeIssues(store, issues, 14), project.id)
   const staleCount = ai.generatedAt ? issues.filter((i) => i.updatedAt > ai.generatedAt).length : 0
   return (
     <AIBlock
-      title={team.name}
+      title={project.name}
       {...ai}
       staleCount={staleCount}
       onRegenerate={ai.regenerate}
       generatingLabel={`Summarizing ${issues.length} issues…`}
       actions={
-        <Link to={`/team/${team.key}/summary`} className="btn sm ghost">
+        <Link to={`/project/${project.key}/summary`} className="btn sm ghost">
           Open summary <ArrowRight size={14} />
         </Link>
       }
@@ -342,22 +343,20 @@ function TeamSummaryCard({ team }: { team: Team }) {
 }
 
 export function AllSummaries() {
-  const { db, me } = useStore()
+  const { db } = useStore()
   return (
     <>
       <div className="content-header">
         <div className="breadcrumb">
           <Sparkles size={16} className="sparkle" style={{ color: 'var(--ai-from)' }} /> AI Summaries
         </div>
-        <span className="faint">Last 14 days, all teams</span>
+        <span className="faint">Last 14 days, all your projects</span>
       </div>
       <div className="content-main">
         <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 880 }}>
-          {db.teams
-            .filter((t) => t.memberIds.includes(me.id))
-            .map((t) => (
-              <TeamSummaryCard key={t.id} team={t} />
-            ))}
+          {db.projects.map((p) => (
+            <ProjectSummaryCard key={p.id} project={p} />
+          ))}
         </div>
       </div>
     </>

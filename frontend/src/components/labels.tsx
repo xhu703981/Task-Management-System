@@ -1,6 +1,6 @@
 import { Plus } from 'lucide-react'
 import type { MenuEntry } from './Menu'
-import { TEAM_COLORS } from '../data/meta'
+import { COLORS } from '../data/meta'
 import type { Issue } from '../data/types'
 
 // Labels are free text on each issue (the backend merges "Bug"/"bug" within an issue, max 5, 32 chars each).
@@ -13,7 +13,7 @@ const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
 export function labelColor(name: string) {
   let h = 0
   for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0
-  return TEAM_COLORS[h % TEAM_COLORS.length]
+  return COLORS[h % COLORS.length]
 }
 
 export const LabelDot = ({ name }: { name: string }) => (

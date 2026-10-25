@@ -1,8 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MoreHorizontal, Plus, Trash2, X } from 'lucide-react'
-import { Menu } from '../../components/Menu'
-import { Avatar, Modal, SettingsRow, TeamAvatar, Toggle, initials } from '../../components/ui'
+import { Plus, Trash2, X } from 'lucide-react'
+import { Avatar, Modal, ProjectAvatar, SettingsRow, Toggle, initials } from '../../components/ui'
 import { ApiKeysSection, PageHeader } from './Personal'
 import { newId, useStore } from '../../data/store'
 import type { Role } from '../../data/types'
@@ -14,11 +13,11 @@ export function WorkspaceSettings() {
   const ws = db.workspaces.find((w) => w.id === db.currentWorkspaceId)!
   const [name, setName] = useState(ws.name)
   const [slug, setSlug] = useState(ws.slug)
-  const [defaultTeamId, setDefaultTeamId] = useState(ws.defaultTeamId)
+  const [defaultProjectId, setDefaultProjectId] = useState(ws.defaultProjectId)
   const [confirm, setConfirm] = useState(false)
   const [typed, setTyped] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
-  const dirty = name !== ws.name || slug !== ws.slug || defaultTeamId !== ws.defaultTeamId
+  const dirty = name !== ws.name || slug !== ws.slug || defaultProjectId !== ws.defaultProjectId
   const update = (patch: Partial<typeof ws>) => setDb((d) => ({ ...d, workspaces: d.workspaces.map((w) => (w.id === ws.id ? { ...w, ...patch } : w)) }))
 
   return (
@@ -50,7 +49,7 @@ export function WorkspaceSettings() {
         onSubmit={(e) => {
           e.preventDefault()
           if (!name.trim() || !slug.trim()) return
-          update({ name: name.trim(), slug: slug.trim(), defaultTeamId })
+          update({ name: name.trim(), slug: slug.trim(), defaultProjectId })
           toast('Workspace updated')
         }}
       >
@@ -61,15 +60,15 @@ export function WorkspaceSettings() {
         <label className="field">
           <span>Workspace URL</span>
           <div className="row" style={{ gap: 0 }}>
-            <span className="input" style={{ width: 'auto', borderRight: 0, borderRadius: '6px 0 0 6px', display: 'flex', alignItems: 'center', color: 'var(--text-tertiary)' }}>linear.app/</span>
+            <span className="input" style={{ width: 'auto', borderRight: 0, borderRadius: '6px 0 0 6px', display: 'flex', alignItems: 'center', color: 'var(--text-tertiary)' }}>taskmanagement.app/</span>
             <input className="input" style={{ borderRadius: '0 6px 6px 0' }} value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} />
           </div>
         </label>
         <label className="field">
-          <span>Default team for new members</span>
-          <select className="select" value={defaultTeamId} onChange={(e) => setDefaultTeamId(e.target.value)}>
-            {db.teams.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
+          <span>Home page project (where the app opens)</span>
+          <select className="select" value={defaultProjectId} onChange={(e) => setDefaultProjectId(e.target.value)}>
+            {db.projects.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
         </label>
@@ -81,7 +80,7 @@ export function WorkspaceSettings() {
       <section className="settings-section">
         <h3 className="danger-text">Danger zone</h3>
         <div className="card danger-zone" style={{ padding: '0 16px' }}>
-          <SettingsRow title="Delete workspace" desc="Permanently delete this workspace, its teams and all issues.">
+          <SettingsRow title="Delete workspace" desc="Permanently delete this workspace, its projects and all issues.">
             <button className="btn sm danger-outline" onClick={() => setConfirm(true)}>
               <Trash2 size={14} /> Delete workspace
             </button>
@@ -116,40 +115,48 @@ export function WorkspaceSettings() {
   )
 }
 
-/* ---------- Teams ---------- */
+/* ---------- Projects ---------- */
 
-export function TeamsSettings() {
-  const { db, me } = useStore()
+export function ProjectsSettings() {
+  const { db, me, user, roleIn } = useStore()
   const navigate = useNavigate()
   return (
     <div className="settings-page">
       <div className="row" style={{ marginBottom: 32, alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
-          <h1 className="title-lg">Teams</h1>
-          <p className="muted" style={{ margin: '4px 0 0' }}>Teams in this workspace.</p>
+          <h1 className="title-lg">Projects</h1>
+          <p className="muted" style={{ margin: '4px 0 0' }}>{me.role === 'Admin' ? 'Every project in this workspace.' : 'The projects you belong to.'}</p>
         </div>
-        <button className="btn primary sm" onClick={() => navigate('/settings/new-team')}>
-          <Plus size={14} /> Create team
-        </button>
+        {me.role === 'Admin' && (
+          <button className="btn primary sm" onClick={() => navigate('/settings/new-project')}>
+            <Plus size={14} /> Create project
+          </button>
+        )}
       </div>
       <div className="card">
         <table className="table">
           <thead>
-            <tr><th>Name</th><th>Identifier</th><th>Members</th><th>Your role</th></tr>
+            <tr><th>Name</th><th>Key</th><th>Lead</th><th>Members</th><th>Issues</th><th>Your role</th></tr>
           </thead>
           <tbody>
-            {db.teams.map((t) => (
-              <tr key={t.id} className="clickable" onClick={() => navigate(`/settings/teams/${t.key}`)}>
+            {db.projects.map((p) => (
+              <tr key={p.id} className="clickable" onClick={() => navigate(`/settings/projects/${p.key}`)}>
                 <td>
                   <span className="row">
-                    <TeamAvatar team={t} size={20} /> <span style={{ fontWeight: 500 }}>{t.name}</span>
+                    <ProjectAvatar project={p} size={20} /> <span style={{ fontWeight: 500 }}>{p.name}</span>
+                    {p.isArchived && <span className="badge-pill">Archived</span>}
                   </span>
                 </td>
-                <td className="mono muted">{t.key}</td>
-                <td className="muted">{t.memberIds.length}</td>
-                <td className="muted">{t.memberIds.includes(me.id) ? (me.role === 'Admin' ? 'Admin' : 'Member') : 'Not a member'}</td>
+                <td className="mono muted">{p.key}</td>
+                <td className="muted">{user(p.leadId)?.name ?? '—'}</td>
+                <td className="muted">{p.memberIds.length}</td>
+                <td className="muted">{p.issueCount}</td>
+                <td className="muted">{p.roles[me.id] ?? (roleIn(p.id) ? 'Workspace Admin' : '—')}</td>
               </tr>
             ))}
+            {db.projects.length === 0 && (
+              <tr><td colSpan={6} className="muted">No projects yet.</td></tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -159,114 +166,61 @@ export function TeamsSettings() {
 
 /* ---------- Members ---------- */
 
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
 export function MembersSettings() {
-  const { db, me, updateUser, inviteMembers, removeMember } = useStore()
-  const [emails, setEmails] = useState('')
-  const [role, setRole] = useState<Role>('Member')
+  const { db, me, setUserRole } = useStore()
   const [query, setQuery] = useState('')
-  const [rowMenu, setRowMenu] = useState<{ id: string; x: number; y: number } | null>(null)
-  const parsed = emails.split(/[\s,;]+/).filter(Boolean)
-  const invalid = parsed.filter((e) => !EMAIL.test(e))
   const q = query.toLowerCase()
-  const users = db.users.filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+  const users = db.users.filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.username.toLowerCase().includes(q))
+  const isAdmin = me.role === 'Admin'
+  const adminCount = db.users.filter((u) => u.role === 'Admin').length
+  const projectsOf = (id: string) => db.projects.filter((p) => p.memberIds.includes(id)).length
 
   return (
     <div className="settings-page" style={{ maxWidth: 760 }}>
-      <PageHeader title="Members" desc="Invite people to the workspace and manage their roles." />
-      <form
-        className="card card-pad"
-        style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
-        onSubmit={(e) => {
-          e.preventDefault()
-          if (!parsed.length || invalid.length) return
-          inviteMembers(parsed, role)
-          setEmails('')
-        }}
-      >
-        <span className="label muted">Invite by email</span>
-        <div className="row">
-          <input className="input" placeholder="email@example.com, another@example.com" value={emails} onChange={(e) => setEmails(e.target.value)} />
-          <select className="select" style={{ width: 120 }} value={role} onChange={(e) => setRole(e.target.value as Role)} aria-label="Role">
-            <option>Admin</option>
-            <option>Member</option>
-            <option>Guest</option>
-          </select>
-          <button className="btn primary" type="submit" disabled={!parsed.length || invalid.length > 0}>Invite</button>
-        </div>
-        {invalid.length > 0 && <span className="danger-text label">Not a valid email: {invalid.join(', ')}</span>}
-      </form>
-
-      <div className="row" style={{ margin: '24px 0 8px' }}>
+      <PageHeader title="Members" desc="Everyone with an account. Workspace Admins create projects and set roles; people join by signing up." />
+      <div className="row" style={{ margin: '0 0 8px' }}>
         <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600, flex: 1 }}>{db.users.length} members</h3>
         <input className="input" style={{ width: 220, height: 28 }} placeholder="Search members" value={query} onChange={(e) => setQuery(e.target.value)} />
       </div>
       <div className="card">
         <table className="table">
           <thead>
-            <tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th /></tr>
+            <tr><th>Name</th><th>Username</th><th>Email</th><th>Projects</th><th>Workspace role</th></tr>
           </thead>
           <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td>
-                  <span className="row">
-                    <Avatar user={u} size={24} /> <span style={{ fontWeight: 500 }}>{u.name}</span>
-                    {u.id === me.id && <span className="faint">(you)</span>}
-                  </span>
-                </td>
-                <td className="muted">{u.email}</td>
-                <td>
-                  <select
-                    className="select"
-                    style={{ height: 28, width: 110 }}
-                    value={u.role}
-                    disabled={u.id === me.id}
-                    onChange={(e) => updateUser(u.id, { role: e.target.value as Role })}
-                    aria-label={`Role for ${u.name}`}
-                  >
-                    <option>Admin</option>
-                    <option>Member</option>
-                    <option>Guest</option>
-                  </select>
-                </td>
-                <td>
-                  <span className={`badge-pill${u.status === 'Active' ? ' green' : ' amber'}`}>{u.status}</span>
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  {u.id !== me.id && (
-                    <button
-                      className="icon-btn"
-                      aria-label={`Actions for ${u.name}`}
-                      onClick={(e) => {
-                        const r = e.currentTarget.getBoundingClientRect()
-                        setRowMenu({ id: u.id, x: r.right - 200, y: r.bottom + 4 })
-                      }}
+            {users.map((u) => {
+              const lastAdmin = u.role === 'Admin' && adminCount === 1
+              return (
+                <tr key={u.id}>
+                  <td>
+                    <span className="row">
+                      <Avatar user={u} size={24} /> <span style={{ fontWeight: 500 }}>{u.name}</span>
+                      {u.id === me.id && <span className="faint">(you)</span>}
+                    </span>
+                  </td>
+                  <td className="muted mono">{u.username}</td>
+                  <td className="muted">{u.email}</td>
+                  <td className="muted">{projectsOf(u.id)}</td>
+                  <td>
+                    <select
+                      className="select"
+                      style={{ height: 28, width: 110 }}
+                      value={u.role}
+                      disabled={!isAdmin || lastAdmin}
+                      title={lastAdmin ? 'The workspace needs at least one Admin' : !isAdmin ? 'Only workspace Admins can change roles' : undefined}
+                      onChange={(e) => setUserRole(u.id, e.target.value as Role)}
+                      aria-label={`Role for ${u.name}`}
                     >
-                      <MoreHorizontal size={16} />
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+                      <option>Admin</option>
+                      <option>Member</option>
+                    </select>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
-      {rowMenu && (
-        <Menu
-          x={rowMenu.x}
-          y={rowMenu.y}
-          width={200}
-          onClose={() => setRowMenu(null)}
-          entries={[
-            ...(db.users.find((u) => u.id === rowMenu.id)?.status === 'Invited'
-              ? [{ label: 'Resend invite', onSelect: () => inviteMembers([db.users.find((u) => u.id === rowMenu.id)!.email], 'Member') }]
-              : []),
-            { label: 'Remove from workspace', icon: <Trash2 size={16} />, danger: true, onSelect: () => removeMember(rowMenu.id) },
-          ]}
-        />
-      )}
     </div>
   )
 }
